@@ -19,6 +19,7 @@ body{
     height:100vh;
 }
 
+/* CARD */
 .container{
     width:370px;
     background:#1e293b;
@@ -32,30 +33,32 @@ body{
 .logo{
     width:90px;
     height:90px;
-    object-fit:cover;
     border-radius:18px;
-    margin-bottom:10px;
     transition:0.25s ease;
+    object-fit:cover;
     box-shadow:0 0 10px rgba(148,163,184,0.3);
 }
 
-/* GREEN (speaking) */
+/* 🟢 normal speaking */
 .logo.speaking{
     box-shadow:0 0 20px #22c55e,
-               0 0 40px #22c55e,
-               0 0 60px rgba(34,197,94,0.5);
+               0 0 40px #22c55e;
 }
 
-/* RED (muted) */
-.logo.muted{
+/* 🟣 YOU muted */
+.logo.selfMuted{
+    box-shadow:0 0 20px #a855f7,
+               0 0 40px #a855f7;
+}
+
+/* 🔴 PARTNER muted */
+.logo.partnerMuted{
     box-shadow:0 0 20px #ef4444,
-               0 0 40px #ef4444,
-               0 0 60px rgba(239,68,68,0.5);
+               0 0 40px #ef4444;
 }
 
 h1{
-    font-size:26px;
-    margin-bottom:10px;
+    margin:10px 0;
     background:linear-gradient(90deg,#22c55e,#38bdf8);
     -webkit-background-clip:text;
     -webkit-text-fill-color:transparent;
@@ -115,7 +118,9 @@ const socket = io();
 let localStream;
 let peer;
 let roomId;
+
 let isMuted = false;
+let partnerMuted = false;
 
 const logo = document.getElementById("logo");
 const statusText = document.getElementById("status");
@@ -126,7 +131,23 @@ const servers = {
     ]
 };
 
-// START
+// 🔥 UPDATE LOGO STATE
+function updateLogo(){
+
+    logo.classList.remove("speaking","selfMuted","partnerMuted");
+
+    if(isMuted){
+        logo.classList.add("selfMuted"); // 🟣 you muted
+    }
+    else if(partnerMuted){
+        logo.classList.add("partnerMuted"); // 🔴 partner muted
+    }
+    else{
+        logo.classList.add("speaking"); // 🟢 normal
+    }
+}
+
+// 🚀 START
 async function startChat(){
 
     try{
@@ -147,7 +168,7 @@ async function startChat(){
     }
 }
 
-// NEXT
+// ⏭ NEXT
 function nextUser(){
 
     statusText.innerText = "Switching...";
@@ -166,7 +187,7 @@ function nextUser(){
     },500);
 }
 
-// MUTE
+// 🎤 MUTE
 function toggleMute(){
 
     if(!localStream) return;
@@ -177,21 +198,15 @@ function toggleMute(){
         track.enabled = !isMuted;
     });
 
-    if(isMuted){
-        document.getElementById("muteBtn").innerText = "Unmute 🔇";
+    socket.emit("mute-state",{
+        roomId,
+        isMuted
+    });
 
-        logo.classList.add("muted");
-        logo.classList.remove("speaking");
-
-    }else{
-        document.getElementById("muteBtn").innerText = "Mute 🎤";
-
-        logo.classList.remove("muted");
-        logo.classList.add("speaking");
-    }
+    updateLogo();
 }
 
-// PEER
+// 🔗 PEER
 function createPeer(){
 
     peer = new RTCPeerConnection({
@@ -210,27 +225,31 @@ function createPeer(){
 
         document.body.appendChild(audio);
 
-        audio.play().catch(()=>{});
+        audio.play().
+            catch(()=>{});
     };
 
     peer.onicecandidate = (event)=>{
         if(event.candidate){
-            socket.emit("ice-candidate",{ candidate:event.candidate,
+            socket.emit("ice-candidate",{
+                candidate:event.candidate,
                 roomId
             });
         }
     };
 }
 
-// MATCHED
+// 🤝 MATCHED
 socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
 
-    statusText.innerText = "Connected ✔️";
+    isMuted = false;
+    partnerMuted = false;
 
-    logo.classList.add("speaking");
-    logo.classList.remove("muted");
+    statusText.innerText = "Connected ✔";
+
+    updateLogo();
 
     createPeer();
 
@@ -243,7 +262,7 @@ socket.on("matched", async(data)=>{
     }
 });
 
-// OFFER
+// 🟡 OFFER
 socket.on("offer", async(offer)=>{
 
     if(!peer) createPeer();
@@ -256,25 +275,27 @@ socket.on("offer", async(offer)=>{
     socket.emit("answer",{answer,roomId});
 });
 
-// ANSWER
+// 🟡 ANSWER
 socket.on("answer", async(answer)=>{
     await peer.setRemoteDescription(answer);
 });
 
-// ICE
+// 🟡 ICE
 socket.on("ice-candidate", async(candidate)=>{
     try{
         await peer.addIceCandidate(candidate);
     }catch(e){}
 });
 
-// DISCONNECT
+// 🔴 PARTNER DISCONNECT
 socket.on("partner-disconnected", ()=>{
 
     statusText.innerText = "User disconnected";
 
-    logo.classList.remove("speaking");
-    logo.classList.remove("muted");
+    isMuted = false;
+    partnerMuted = false;
+
+    updateLogo();
 
     if(peer){
         peer.close();
@@ -284,9 +305,17 @@ socket.on("partner-disconnected", ()=>{
     document.querySelectorAll("audio").forEach(a=>a.remove());
 });
 
-// WAITING
+// 🟡 WAITING
 socket.on("waiting", ()=>{
     statusText.innerText = "Waiting...";
+});
+
+
+// 🔴 PARTNER MUTE STATE
+socket.on("partner-mute-state",(data)=>{
+
+    partnerMuted = data.isMuted;
+    updateLogo();
 });
 
 </script>
