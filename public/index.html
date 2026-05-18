@@ -19,15 +19,17 @@ body{
     height:100vh;
 }
 
+/* CARD */
 .container{
     width:370px;
-    background:#1e293b;
+    background: rgba(30,41,59,0.95);
     padding:30px;
     border-radius:20px;
     text-align:center;
     box-shadow:0 0 40px rgba(0,0,0,0.6);
 }
 
+/* LOGO */
 .logo{
     width:90px;
     height:90px;
@@ -37,6 +39,7 @@ body{
     box-shadow:0 0 25px rgba(34,197,94,0.4);
 }
 
+/* TITLE */
 h1{
     font-size:26px;
     margin-bottom:10px;
@@ -45,11 +48,13 @@ h1{
     -webkit-text-fill-color:transparent;
 }
 
+/* STATUS */
 #status{
     color:#94a3b8;
     margin:15px 0;
 }
 
+/* BUTTONS */
 button{
     border:none;
     padding:12px 18px;
@@ -68,9 +73,28 @@ button:hover{
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
 
-audio{
-    width:100%;
+/* VOLUME */
+.volume-control{
     margin-top:10px;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    gap:10px;
+}
+
+.volume-control button{
+    background:#334155;
+    color:white;
+    padding:6px 10px;
+    border-radius:8px;
+}
+
+#volText{
+    color:#94a3b8;
+}
+
+audio{
+    display:none;
 }
 
 </style>
@@ -90,6 +114,12 @@ audio{
 <button class="next" onclick="nextUser()">Next</button>
 <button class="mute" id="muteBtn" onclick="toggleMute()">Mute 🎤</button>
 
+<div class="volume-control">
+    <button onclick="changeVolume(-0.1)">-</button>
+    <span id="volText">100%</span>
+    <button onclick="changeVolume(0.1)">+</button>
+</div>
+
 </div>
 
 <script src="/socket.io/socket.io.js"></script>
@@ -101,8 +131,8 @@ const socket = io();
 let localStream;
 let peer;
 let roomId;
-let isCaller = false;
 let isMuted = false;
+let volume = 1;
 
 const statusText = document.getElementById("status");
 
@@ -113,17 +143,20 @@ const servers = {
     ]
 };
 
-// START CHAT
+// START
 async function startChat(){
 
     try{
 
         localStream = await navigator.mediaDevices.getUserMedia({
-            audio:true
+            audio:{
+                echoCancellation:true,
+                noiseSuppression:true,
+                autoGainControl:true
+            }
         });
 
         socket.emit("findMatch");
-
         statusText.innerText = "Searching...";
 
     }catch(err){
@@ -131,7 +164,7 @@ async function startChat(){
     }
 }
 
-// NEXT USER
+// NEXT
 function nextUser(){
 
     statusText.innerText = "Switching...";
@@ -141,7 +174,7 @@ function nextUser(){
         peer = null;
     }
 
-    document.querySelectorAll("audio").forEach(a => a.remove());
+    document.querySelectorAll("audio").forEach(a=>a.remove());
 
     socket.emit("next");
 
@@ -150,7 +183,7 @@ function nextUser(){
     },500);
 }
 
-// MUTE / UNMUTE
+// MUTE
 function toggleMute(){
 
     if(!localStream) return;
@@ -163,6 +196,22 @@ function toggleMute(){
 
     document.getElementById("muteBtn").innerText =
         isMuted ? "Unmute 🔇" : "Mute 🎤";
+}
+
+// VOLUME
+function changeVolume(v){
+
+    volume += v;
+
+    if(volume > 1) volume = 1;
+    if(volume < 0) volume = 0;
+
+    document.querySelectorAll("audio").forEach(a=>{
+        a.volume = volume;
+    });
+
+    document.getElementById("volText").innerText =
+        Math.round(volume * 100) + "%";
 }
 
 // PEER
@@ -179,16 +228,14 @@ function createPeer(){
     peer.ontrack = (event)=>{
 
         const audio = document.createElement("audio");
-
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
-        audio.controls = true;
+        audio.controls = false;
+        audio.volume = volume;
 
         document.body.appendChild(audio);
 
-        audio.onloadedmetadata = ()=>{
-            audio.play().catch(()=>{});
-        };
+        audio.play().catch(()=>{});
     };
 
     peer.onicecandidate = (event)=>{
@@ -205,13 +252,12 @@ function createPeer(){
 socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
-    isCaller = data.isCaller;
 
     statusText.innerText = "Connected ✔️";
 
     createPeer();
 
-    if(isCaller){
+    if(data.isCaller){
 
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
@@ -226,6 +272,7 @@ socket.on("offer", async(offer)=>{
     if(!peer) createPeer();
 
     await peer.setRemoteDescription(offer);
+
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
 
