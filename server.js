@@ -12,7 +12,6 @@ const io = new Server(server, {
     }
 });
 
-// static files (index + logo)
 app.use(express.static("public"));
 
 let waitingUser = null;
@@ -80,5 +79,5 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log("Velora running on port", PORT);
+    console.log("Velora running");
 });
