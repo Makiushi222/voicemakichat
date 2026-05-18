@@ -4,18 +4,22 @@ const { Server } = require("socket.io");
 
 const app = express();
 const server = http.createServer(app);
-const io = new Server(server);
+
+const io = new Server(server, {
+    cors: { origin: "*" }
+});
 
 app.use(express.static("."));
 
 let waitingUser = null;
 
 io.on("connection", (socket) => {
-    console.log("User:", socket.id);
+    console.log("User connected:", socket.id);
 
     socket.on("findMatch", () => {
 
-        if (waitingUser) {
+        if (waitingUser && waitingUser.id !== socket.id) {
+
             const roomId = "room-" + waitingUser.id + "-" + socket.id;
 
             socket.join(roomId);
@@ -25,25 +29,26 @@ io.on("connection", (socket) => {
             waitingUser.emit("matched", roomId);
 
             waitingUser = null;
+
         } else {
             waitingUser = socket;
             socket.emit("waiting");
         }
     });
 
-    socket.on("offer", ({ offer, roomId }) => {
-        socket.to(roomId).emit("offer", offer);
+    socket.on("offer", (data) => {
+        socket.to(data.roomId).emit("offer", data.offer);
     });
 
-    socket.on("answer", ({ answer, roomId }) => {
-        socket.to(roomId).emit("answer", answer);
+    socket.on("answer", (data) => {
+        socket.to(data.roomId).emit("answer", data.answer);
     });
 
-    socket.on("ice-candidate", ({ candidate, roomId }) => {
-        socket.to(roomId).emit("ice-candidate", candidate);
+    socket.on("ice-candidate", (data) => {
+        socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
 });
 
-server.listen(3000, () => {
-    console.log("Server running...");
+server.listen(process.env.PORT || 3000, () => {
+    console.log("Server running");
 });
