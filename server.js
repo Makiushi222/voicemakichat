@@ -6,10 +6,14 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: "*",
+        methods: ["GET", "POST"]
+    }
 });
 
-app.use(express.static("."));
+// static files (index + logo)
+app.use(express.static("public"));
 
 let waitingUser = null;
 
@@ -21,8 +25,7 @@ io.on("connection", (socket) => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
 
-            const roomId =
-                "room-" + waitingUser.id + "-" + socket.id;
+            const roomId = "room-" + waitingUser.id + "-" + socket.id;
 
             socket.join(roomId);
             waitingUser.join(roomId);
@@ -40,42 +43,33 @@ io.on("connection", (socket) => {
             waitingUser = null;
 
         } else {
-
             waitingUser = socket;
             socket.emit("waiting");
         }
     });
 
     socket.on("offer", (data) => {
-        socket.to(data.roomId)
-            .emit("offer", data.offer);
+        socket.to(data.roomId).emit("offer", data.offer);
     });
 
     socket.on("answer", (data) => {
-        socket.to(data.roomId)
-            .emit("answer", data.answer);
+        socket.to(data.roomId).emit("answer", data.answer);
     });
 
     socket.on("ice-candidate", (data) => {
-        socket.to(data.roomId)
-            .emit("ice-candidate", data.candidate);
+        socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
 
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
-
             if (room !== socket.id) {
-
                 socket.leave(room);
-
-                socket.to(room)
-                    .emit("partner-disconnected");
+                socket.to(room).emit("partner-disconnected");
             }
         });
 
-        if (waitingUser &&
-            waitingUser.id === socket.id) {
+        if (waitingUser && waitingUser.id === socket.id) {
             waitingUser = null;
         }
 
@@ -83,6 +77,8 @@ io.on("connection", (socket) => {
     });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log("Server running");
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log("Velora running on port", PORT);
 });
