@@ -2,11 +2,8 @@
 <html lang="en">
 
 <head>
-
 <meta charset="UTF-8">
-
-<meta name="viewport"
-content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
 <title>Voice Chat</title>
 
@@ -14,7 +11,6 @@ content="width=device-width, initial-scale=1.0">
 
 body{
     margin:0;
-    padding:0;
     background:#0f172a;
     color:white;
     font-family:Arial;
@@ -38,15 +34,14 @@ h1{
 }
 
 #status{
-    margin-top:15px;
-    margin-bottom:20px;
+    margin:15px 0;
     color:#94a3b8;
 }
 
 button{
     border:none;
     padding:12px 20px;
-    margin:8px;
+    margin:10px;
     border-radius:12px;
     font-size:16px;
     cursor:pointer;
@@ -57,13 +52,8 @@ button:hover{
     transform:scale(1.05);
 }
 
-.mic{
-    background:#22c55e;
-    color:white;
-}
-
 .start{
-    background:#3b82f6;
+    background:#22c55e;
     color:white;
 }
 
@@ -74,11 +64,10 @@ button:hover{
 
 audio{
     width:100%;
-    margin-top:20px;
+    margin-top:15px;
 }
 
 </style>
-
 </head>
 
 <body>
@@ -89,18 +78,11 @@ audio{
 
 <p id="status">Idle</p>
 
-<button class="mic"
-onclick="enableMic()">
-Enable Mic
+<button class="start" onclick="startChat()">
+Start Chat
 </button>
 
-<button class="start"
-onclick="start()">
-Start
-</button>
-
-<button class="next"
-onclick="nextUser()">
+<button class="next" onclick="nextUser()">
 Next
 </button>
 
@@ -122,15 +104,12 @@ document.getElementById("status");
 
 const servers = {
     iceServers: [
-        {
-            urls:
-            "stun:stun.l.google.com:19302"
-        }
+        { urls: "stun:stun.l.google.com:19302" }
     ]
 };
 
-// 🎤 Enable Mic
-async function enableMic(){
+// 🚀 START CHAT (one button only)
+async function startChat(){
 
     try{
 
@@ -140,26 +119,18 @@ async function enableMic(){
             audio:true
         });
 
+        socket.emit("findMatch");
+
         statusText.innerText =
-        "Mic enabled ✔️";
+        "Searching...";
 
     }catch(err){
 
         alert("Microphone blocked!");
-        console.log(err);
     }
 }
 
-// ▶️ Start Match
-function start(){
-
-    socket.emit("findMatch");
-
-    statusText.innerText =
-    "Searching...";
-}
-
-// ⏭️ Next User
+// ⏭️ NEXT USER
 function nextUser(){
 
     if(peer){
@@ -168,90 +139,57 @@ function nextUser(){
         peer = null;
     }
 
-    document
-    .querySelectorAll("audio")
+    document.querySelectorAll("audio")
     .forEach(a=>a.remove());
 
     socket.emit("next");
-
     socket.emit("findMatch");
 
     statusText.innerText =
     "Searching new user...";
 }
 
-// 🔗 Create Peer
+// 🔗 create peer
 function createPeer(){
 
     peer = new RTCPeerConnection(servers);
 
-    // SEND AUDIO
-    localStream
-    .getTracks()
-    .forEach(track=>{
-
-        peer.addTrack(
-            track,
-            localStream
-        );
+    localStream.getTracks().forEach(track=>{
+        peer.addTrack(track, localStream);
     });
 
-    // RECEIVE AUDIO
     peer.ontrack = (event)=>{
 
-        console.log(
-            "TRACK RECEIVED ✔️"
-        );
+        console.log("TRACK RECEIVED ✔️");
 
-        const oldAudio =
-        document.querySelector("audio");
+        const audio = document.createElement("audio");
 
-        if(oldAudio)
-            oldAudio.remove();
-
-        const audio =
-        document.createElement("audio");
-
-        audio.srcObject =
-        event.streams[0];
-
+        audio.srcObject = event.streams[0];
         audio.autoplay = true;
-
         audio.controls = true;
-
         audio.playsInline = true;
 
         document.body.appendChild(audio);
 
-        audio.play()
-        .catch(console.log);
+        audio.play().catch(console.log);
     };
 
-    // ICE
-    peer.onicecandidate =
-    (event)=>{
+    peer.onicecandidate = (event)=>{
 
         if(event.candidate){
 
-            socket.emit(
-                "ice-candidate",
-                {
-                    candidate:
-                    event.candidate,
-
-                    roomId
-                }
-            );
+            socket.emit("ice-candidate",{
+                candidate:event.candidate,
+                roomId
+            });
         }
     };
 }
 
-// ✅ Matched
-socket.on("matched",
-async(data)=>{
+// 🟢 matched
+socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
-
     isCaller = data.isCaller;
 
     statusText.innerText =
@@ -264,10 +202,7 @@ async(data)=>{
         const offer =
         await peer.createOffer();
 
-        await peer
-        .setLocalDescription(
-            offer
-        );
+        await peer.setLocalDescription(offer);
 
         socket.emit("offer",{
             offer,
@@ -276,26 +211,17 @@ async(data)=>{
     }
 });
 
-// 📥 Offer
-socket.on("offer",
-async(offer)=>{
+// 🟢 offer
+socket.on("offer", async(offer)=>{
 
-    if(!peer)
-        createPeer();
+    if(!peer) createPeer();
 
-    await peer
-    .setRemoteDescription(
-        offer
-    );
+    await peer.setRemoteDescription(offer);
 
     const answer =
-    await peer.
-        createAnswer();
+    await peer.createAnswer();
 
-    await peer
-    .setLocalDescription(
-        answer
-    );
+    await peer.setLocalDescription(answer);
 
     socket.emit("answer",{
         answer,
@@ -303,58 +229,40 @@ async(offer)=>{
     });
 });
 
-// 📥 Answer
-socket.on("answer",
-async(answer)=>{
+// 🟢 answer
+socket.on("answer", async(answer)=>{
 
-    await peer
-    .setRemoteDescription(
-        answer
-    );
+    await peer.setRemoteDescription(answer);
 });
 
-// 📥 ICE
-socket.on("ice-candidate",
-async(candidate)=>{
+// 🟢 ICE
+socket.on("ice-candidate", async(candidate)=>{
 
     try{
-
-        await peer
-        .addIceCandidate(
-            candidate
-        );
-
+        await peer.addIceCandidate(candidate);
     }catch(e){
-
         console.log(e);
     }
 });
 
-// ❌ Partner Left
-socket.on(
-"partner-disconnected",
-()=>{
+// ❌ partner left
+socket.on("partner-disconnected", ()=>{
 
     statusText.innerText =
     "User disconnected";
 
     if(peer){
-
         peer.close();
-
         peer = null;
     }
 
-    document
-    .querySelectorAll("audio")
+    document.querySelectorAll("audio")
     .forEach(a=>a.remove());
 });
 
-// ⏳ Waiting
-socket.on("waiting",()=>{
-
-    statusText.innerText =
-    "Waiting for user...";
+// ⏳ waiting
+socket.on("waiting", ()=>{ statusText.innerText =
+    "Waiting...";
 });
 
 </script>
