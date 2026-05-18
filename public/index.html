@@ -222,7 +222,8 @@ function toggleMute(){
 
     isMuted = !isMuted;
 
-    localStream.getAudioTracks().forEach(track=>{ track.enabled = !isMuted;
+    localStream.getAudioTracks().forEach(track=>{
+        track.enabled = !isMuted;
     });
 
     socket.emit("mute-state",{
@@ -273,7 +274,7 @@ socket.on("matched", async(data)=>{
     isMuted = false;
     partnerMuted = false;
 
-    statusText.innerText = "Connected ✔️";
+    statusText.innerText = "Connected ✔";
 
     updateLogo();
 
