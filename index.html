@@ -7,7 +7,7 @@
 
 <h2>Random Voice Chat 🎤</h2>
 
-<button onclick="enableMic()">Enable Mic 🎤</button>
+<button onclick="enableMic()">Enable Mic</button>
 <button onclick="findMatch()">Start</button>
 
 <p id="status">Not connected</p>
@@ -26,29 +26,59 @@ const config = {
     ]
 };
 
-// 🎤 تشغيل المايك
+// 🟢 mic
 async function enableMic() {
-    try {
-        localStream = await navigator.mediaDevices.getUserMedia({
-            audio: true
-        });
-
-        document.getElementById("status").innerText = "Mic enabled ✔";
-        console.log("Mic ON");
-    } catch (e) {
-        console.log("Mic error", e);
-        alert("Microphone blocked!");
-    }
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+    document.getElementById("status").innerText = "Mic ON ✔";
 }
 
-// 🔍 بحث عن شخص
+// 🟢 start
 function findMatch() {
     socket.emit("findMatch");
     document.getElementById("status").innerText = "Searching...";
 }
 
-// 🟢 عند التطابق
+// 🟢 create peer
+function createPeer() {
+    peerConnection = new RTCPeerConnection(config);
+
+    // send audio
+    localStream.getTracks().forEach(track => {
+        peerConnection.addTrack(track, localStream);
+    });
+
+    // receive audio (FIX)
+    peerConnection.ontrack = (event) => {
+        console.log("Audio received ✔");
+
+        const audio = document.createElement("audio");
+        audio.srcObject = event.streams[0];
+        audio.autoplay = true;
+        audio.playsInline = true;
+        audio.controls = true;
+
+        document.body.appendChild(audio);
+
+        audio.play().catch(err => {
+            console.log("Play error:", err);
+        });
+    };
+
+    // ice
+    peerConnection.onicecandidate = (event) => {
+        if (event.candidate) {
+            socket.emit("ice-candidate", {
+                candidate: event.candidate,
+                roomId
+            });
+        }
+    };
+}
+
+// 🟢 matched
 socket.on("matched", async (id) => {
+    console.log("MATCHED:", id);
+
     roomId = id;
     document.getElementById("status").innerText = "Matched ✔";
 
@@ -64,38 +94,9 @@ socket.on("matched", async (id) => {
     socket.emit("offer", { offer, roomId });
 });
 
-// 🟢 إنشاء الاتصال
-function createPeer() {
-    peerConnection = new RTCPeerConnection(config);
-
-    // إضافة الصوت
-    localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
-    });
-
-    // استقبال الصوت
-    peerConnection.ontrack = (event) => {
-        const audio = document.createElement("audio");
-        audio.srcObject = event.streams[0];
-        audio.autoplay = true;
-        audio.controls = true;
-        document.body.appendChild(audio);
-        audio.play().catch(()=>{});
-    };
-
-    // ICE
-    peerConnection.onicecandidate = (event) => {
-        if (event.candidate) {
-            socket.emit("ice-candidate", {
-                candidate: event.candidate,
-                roomId
-            });
-        }
-    };
-}
-
-// 🟢 استقبال offer
+// 🟢 offer
 socket.on("offer", async (offer) => {
+    console.log("Offer received ✔");
 
     if (!peerConnection) createPeer();
 
@@ -112,7 +113,7 @@ socket.on("answer", async (answer) => {
     await peerConnection.setRemoteDescription(answer);
 });
 
-// 🟢 ICE
+// 🟢 ice
 socket.on("ice-candidate", async (candidate) => {
     try {
         await peerConnection.addIceCandidate(candidate);
