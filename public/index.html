@@ -10,7 +10,7 @@
 
 body{
     margin:0;
-    background: radial-gradient(circle at top,#0f172a,#020617);
+    background: radial-gradient(circle,#0f172a,#020617);
     color:white;
     font-family:Arial;
     display:flex;
@@ -19,60 +19,45 @@ body{
     height:100vh;
 }
 
-/* CARD */
 .container{
     width:370px;
-    background: rgba(30,41,59,0.9);
+    background:#1e293b;
     padding:30px;
-    border-radius:22px;
+    border-radius:20px;
     text-align:center;
     box-shadow:0 0 40px rgba(0,0,0,0.6);
-    backdrop-filter: blur(10px);
 }
 
-/* LOGO */
 .logo{
-    width: 90px;
-    height: 90px;
-    object-fit: cover;
-    border-radius: 20px;
-    margin-bottom: 10px;
-
-    box-shadow: 0 0 25px rgba(34,197,94,0.4),
-                0 0 45px rgba(59,130,246,0.3);
-
-    border: 2px solid rgba(255,255,255,0.1);
-    transition: 0.3s;
+    width:90px;
+    height:90px;
+    object-fit:cover;
+    border-radius:18px;
+    margin-bottom:10px;
+    box-shadow:0 0 25px rgba(34,197,94,0.4);
 }
 
-.logo:hover{
-    transform: scale(1.05) rotate(2deg);
-}
-
-/* TITLE */
 h1{
-    margin-bottom: 10px;
-    font-size: 26px;
-    background: linear-gradient(90deg,#22c55e,#38bdf8);
-    -webkit-background-clip: text;
-    -webkit-text-fill-color: transparent;
+    font-size:26px;
+    margin-bottom:10px;
+    background:linear-gradient(90deg,#22c55e,#38bdf8);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
 }
 
-/* STATUS */
 #status{
-    margin:15px 0;
     color:#94a3b8;
+    margin:15px 0;
 }
 
-/* BUTTONS */
 button{
     border:none;
     padding:12px 18px;
-    margin:8px;
+    margin:6px;
     border-radius:12px;
-    font-size:15px;
     cursor:pointer;
     transition:0.3s;
+    font-size:14px;
 }
 
 button:hover{
@@ -81,10 +66,11 @@ button:hover{
 
 .start{background:#22c55e;color:white;}
 .next{background:#ef4444;color:white;}
+.mute{background:#3b82f6;color:white;}
 
 audio{
     width:100%;
-    margin-top:15px;
+    margin-top:10px;
 }
 
 </style>
@@ -102,6 +88,7 @@ audio{
 
 <button class="start" onclick="startChat()">Start Chat</button>
 <button class="next" onclick="nextUser()">Next</button>
+<button class="mute" id="muteBtn" onclick="toggleMute()">Mute 🎤</button>
 
 </div>
 
@@ -115,6 +102,7 @@ let localStream;
 let peer;
 let roomId;
 let isCaller = false;
+let isMuted = false;
 
 const statusText = document.getElementById("status");
 
@@ -157,12 +145,27 @@ function nextUser(){
 
     socket.emit("next");
 
-    setTimeout(() => {
+    setTimeout(()=>{
         socket.emit("findMatch");
-    }, 500);
+    },500);
 }
 
-// CREATE PEER
+// MUTE / UNMUTE
+function toggleMute(){
+
+    if(!localStream) return;
+
+    isMuted = !isMuted;
+
+    localStream.getAudioTracks().forEach(track=>{
+        track.enabled = !isMuted;
+    });
+
+    document.getElementById("muteBtn").innerText =
+        isMuted ? "Unmute 🔇" : "Mute 🎤";
+}
+
+// PEER
 function createPeer(){
 
     peer = new RTCPeerConnection({
@@ -183,7 +186,7 @@ function createPeer(){
 
         document.body.appendChild(audio);
 
-        audio.onloadedmetadata = () => {
+        audio.onloadedmetadata = ()=>{
             audio.play().catch(()=>{});
         };
     };
@@ -204,7 +207,7 @@ socket.on("matched", async(data)=>{
     roomId = data.roomId;
     isCaller = data.isCaller;
 
-    statusText.innerText = "Connected ✔";
+    statusText.innerText = "Connected ✔️";
 
     createPeer();
 
@@ -213,7 +216,7 @@ socket.on("matched", async(data)=>{
         const offer = await peer.createOffer();
         await peer.setLocalDescription(offer);
 
-        socket.emit("offer", { offer, roomId });
+        socket.emit("offer",{offer,roomId});
     }
 });
 
@@ -223,11 +226,10 @@ socket.on("offer", async(offer)=>{
     if(!peer) createPeer();
 
     await peer.setRemoteDescription(offer);
-
     const answer = await peer.createAnswer();
     await peer.setLocalDescription(answer);
 
-    socket.emit("answer", { answer, roomId });
+    socket.emit("answer",{answer,roomId});
 });
 
 // ANSWER
@@ -244,6 +246,7 @@ socket.on("ice-candidate", async(candidate)=>{
 
 // DISCONNECT
 socket.on("partner-disconnected", ()=>{
+
     statusText.innerText = "User disconnected";
 
     if(peer){
