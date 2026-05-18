@@ -58,6 +58,12 @@ io.on("connection", (socket) => {
     socket.on("ice-candidate", (data) => {
         socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
+    
+    socket.on("mute-state", (data) => {
+    socket.to(data.roomId).emit("partner-mute-state", {
+        isMuted: data.isMuted
+    });
+});
 
     socket.on("next", () => {
 
