@@ -19,10 +19,9 @@ body{
     height:100vh;
 }
 
-/* CARD */
 .container{
     width:370px;
-    background: rgba(30,41,59,0.95);
+    background:#1e293b;
     padding:30px;
     border-radius:20px;
     text-align:center;
@@ -36,7 +35,8 @@ body{
     object-fit:cover;
     border-radius:18px;
     margin-bottom:10px;
-    box-shadow:0 0 25px rgba(34,197,94,0.4);
+    transition:0.08s linear;
+    box-shadow: 0 0 10px rgba(34,197,94,0.2);
 }
 
 /* TITLE */
@@ -62,7 +62,6 @@ button{
     border-radius:12px;
     cursor:pointer;
     transition:0.3s;
-    font-size:14px;
 }
 
 button:hover{
@@ -72,26 +71,6 @@ button:hover{
 .start{background:#22c55e;color:white;}
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
-
-/* VOLUME */
-.volume-control{
-    margin-top:10px;
-    display:flex;
-    justify-content:center;
-    align-items:center;
-    gap:10px;
-}
-
-.volume-control button{
-    background:#334155;
-    color:white;
-    padding:6px 10px;
-    border-radius:8px;
-}
-
-#volText{
-    color:#94a3b8;
-}
 
 audio{
     display:none;
@@ -104,7 +83,7 @@ audio{
 
 <div class="container">
 
-<img src="/velora.jpg" class="logo">
+<img src="/velora.jpg" class="logo" id="logo">
 
 <h1>Velora</h1>
 
@@ -113,12 +92,6 @@ audio{
 <button class="start" onclick="startChat()">Start Chat</button>
 <button class="next" onclick="nextUser()">Next</button>
 <button class="mute" id="muteBtn" onclick="toggleMute()">Mute 🎤</button>
-
-<div class="volume-control">
-    <button onclick="changeVolume(-0.1)">-</button>
-    <span id="volText">100%</span>
-    <button onclick="changeVolume(0.1)">+</button>
-</div>
 
 </div>
 
@@ -132,8 +105,13 @@ let localStream;
 let peer;
 let roomId;
 let isMuted = false;
-let volume = 1;
 
+let audioContext;
+let analyser;
+let dataArray;
+let source;
+
+const logo = document.getElementById("logo");
 const statusText = document.getElementById("status");
 
 const servers = {
@@ -143,7 +121,7 @@ const servers = {
     ]
 };
 
-// START
+// 🚀 START
 async function startChat(){
 
     try{
@@ -156,6 +134,19 @@ async function startChat(){
             }
         });
 
+        // 🎤 Voice analyzer
+        audioContext = new (window.AudioContext || window.webkitAudioContext)();
+        source = audioContext.createMediaStreamSource(localStream);
+
+        analyser = audioContext.createAnalyser();
+        analyser.fftSize = 256;
+
+        source.connect(analyser);
+
+        dataArray = new Uint8Array(analyser.frequencyBinCount);
+
+        animateVoice();
+
         socket.emit("findMatch");
         statusText.innerText = "Searching...";
 
@@ -164,7 +155,30 @@ async function startChat(){
     }
 }
 
-// NEXT
+// 🔥 VOICE ANIMATION (REAL-TIME GLOW)
+function animateVoice(){
+
+    requestAnimationFrame(animateVoice);
+
+    if(!analyser) return;
+
+    analyser.getByteFrequencyData(dataArray);
+
+    let sum = 0;
+    for(let i=0;i<dataArray.length;i++){
+        sum += dataArray[i];
+    }
+
+    let avg = sum / dataArray.length;
+    let intensity = avg / 255;
+
+    logo.style.boxShadow = `
+        0 0 ${10 + intensity * 25}px rgba(34,197,94,0.6),
+        0 0 ${25 + intensity * 60}px rgba(34,197,94,0.4)
+    `;
+}
+
+// ⏭️ NEXT
 function nextUser(){
 
     statusText.innerText = "Switching...";
@@ -183,7 +197,7 @@ function nextUser(){
     },500);
 }
 
-// MUTE
+// 🎤 MUTE
 function toggleMute(){
 
     if(!localStream) return;
@@ -194,27 +208,17 @@ function toggleMute(){
         track.enabled = !isMuted;
     });
 
-    document.getElementById("muteBtn").innerText =
-        isMuted ? "Unmute 🔇" : "Mute 🎤";
+    if(isMuted){
+        document.getElementById("muteBtn").innerText = "Unmute 🔇";
+
+        logo.style.boxShadow = "0 0 20px rgba(239,68,68,0.8)";
+    }else{
+        document.
+            getElementById("muteBtn").innerText = "Mute 🎤";
+    }
 }
 
-// VOLUME
-function changeVolume(v){
-
-    volume += v;
-
-    if(volume > 1) volume = 1;
-    if(volume < 0) volume = 0;
-
-    document.querySelectorAll("audio").forEach(a=>{
-        a.volume = volume;
-    });
-
-    document.getElementById("volText").innerText =
-        Math.round(volume * 100) + "%";
-}
-
-// PEER
+// 🔗 PEER
 function createPeer(){
 
     peer = new RTCPeerConnection({
@@ -230,8 +234,6 @@ function createPeer(){
         const audio = document.createElement("audio");
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
-        audio.controls = false;
-        audio.volume = volume;
 
         document.body.appendChild(audio);
 
@@ -248,7 +250,7 @@ function createPeer(){
     };
 }
 
-// MATCHED
+// 🤝 MATCHED
 socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
