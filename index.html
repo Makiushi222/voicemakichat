@@ -1,20 +1,115 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
+
 <head>
-    <title>Voice Chat</title>
+
+<meta charset="UTF-8">
+
+<meta name="viewport"
+content="width=device-width, initial-scale=1.0">
+
+<title>Voice Chat</title>
+
+<style>
+
+body{
+    margin:0;
+    padding:0;
+    background:#0f172a;
+    color:white;
+    font-family:Arial;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.container{
+    width:350px;
+    background:#1e293b;
+    padding:30px;
+    border-radius:20px;
+    text-align:center;
+    box-shadow:0 0 25px rgba(0,0,0,0.4);
+}
+
+h1{
+    margin-bottom:10px;
+}
+
+#status{
+    margin-top:15px;
+    margin-bottom:20px;
+    color:#94a3b8;
+}
+
+button{
+    border:none;
+    padding:12px 20px;
+    margin:8px;
+    border-radius:12px;
+    font-size:16px;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+button:hover{
+    transform:scale(1.05);
+}
+
+.mic{
+    background:#22c55e;
+    color:white;
+}
+
+.start{
+    background:#3b82f6;
+    color:white;
+}
+
+.next{
+    background:#ef4444;
+    color:white;
+}
+
+audio{
+    width:100%;
+    margin-top:20px;
+}
+
+</style>
+
 </head>
+
 <body>
 
-<h2>Voice Chat 🎤</h2>
+<div class="container">
 
-<button onclick="enableMic()">Enable Mic</button>
-<button onclick="start()">Start</button>
+<h1>🎤 Voice Chat</h1>
 
 <p id="status">Idle</p>
+
+<button class="mic"
+onclick="enableMic()">
+Enable Mic
+</button>
+
+<button class="start"
+onclick="start()">
+Start
+</button>
+
+<button class="next"
+onclick="nextUser()">
+Next
+</button>
+
+</div>
 
 <script src="/socket.io/socket.io.js"></script>
 
 <script>
+
 const socket = io();
 
 let localStream;
@@ -22,121 +117,246 @@ let peer;
 let roomId;
 let isCaller = false;
 
+const statusText =
+document.getElementById("status");
+
 const servers = {
     iceServers: [
-        { urls: "stun:stun.l.google.com:19302" }
+        {
+            urls:
+            "stun:stun.l.google.com:19302"
+        }
     ]
 };
 
-// 🟢 mic
-async function enableMic() {
-    localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-    });
+// 🎤 Enable Mic
+async function enableMic(){
 
-    document.getElementById("status").innerText = "Mic enabled ✔️";
+    try{
+
+        localStream =
+        await navigator.mediaDevices
+        .getUserMedia({
+            audio:true
+        });
+
+        statusText.innerText =
+        "Mic enabled ✔️";
+
+    }catch(err){
+
+        alert("Microphone blocked!");
+        console.log(err);
+    }
 }
 
-// 🟢 start
-function start() {
+// ▶️ Start Match
+function start(){
+
     socket.emit("findMatch");
-    document.getElementById("status").innerText = "Searching...";
+
+    statusText.innerText =
+    "Searching...";
 }
 
-// 🟢 peer
-function createPeer() {
+// ⏭️ Next User
+function nextUser(){
+
+    if(peer){
+
+        peer.close();
+        peer = null;
+    }
+
+    document
+    .querySelectorAll("audio")
+    .forEach(a=>a.remove());
+
+    socket.emit("next");
+
+    socket.emit("findMatch");
+
+    statusText.innerText =
+    "Searching new user...";
+}
+
+// 🔗 Create Peer
+function createPeer(){
 
     peer = new RTCPeerConnection(servers);
 
     // SEND AUDIO
-    localStream.getTracks().forEach(track => {
-        peer.addTrack(track, localStream);
+    localStream
+    .getTracks()
+    .forEach(track=>{
+
+        peer.addTrack(
+            track,
+            localStream
+        );
     });
 
     // RECEIVE AUDIO
-    peer.ontrack = (event) => {
+    peer.ontrack = (event)=>{
 
-        console.log("TRACK RECEIVED ✔️");
+        console.log(
+            "TRACK RECEIVED ✔️"
+        );
 
-        const audio = document.createElement("audio");
+        const oldAudio =
+        document.querySelector("audio");
 
-        audio.srcObject = event.streams[0];
+        if(oldAudio)
+            oldAudio.remove();
+
+        const audio =
+        document.createElement("audio");
+
+        audio.srcObject =
+        event.streams[0];
+
         audio.autoplay = true;
+
         audio.controls = true;
+
         audio.playsInline = true;
 
         document.body.appendChild(audio);
 
-        audio.play().catch(console.log);
+        audio.play()
+        .catch(console.log);
     };
 
     // ICE
-    peer.onicecandidate = (event) => {
-        if (event.candidate) {
-            socket.emit("ice-candidate", {
-                candidate: event.candidate,
-                roomId
-            });
+    peer.onicecandidate =
+    (event)=>{
+
+        if(event.candidate){
+
+            socket.emit(
+                "ice-candidate",
+                {
+                    candidate:
+                    event.candidate,
+
+                    roomId
+                }
+            );
         }
     };
 }
 
-// 🟢 matched
-socket.on("matched", async (data) => {
+// ✅ Matched
+socket.on("matched",
+async(data)=>{
 
     roomId = data.roomId;
+
     isCaller = data.isCaller;
 
-    document.getElementById("status").innerText = "Matched ✔️";
+    statusText.innerText =
+    "Connected ✔️";
 
     createPeer();
 
-    // ONLY CALLER SENDS OFFER
-    if (isCaller) {
+    if(isCaller){
 
-        const offer = await peer.createOffer();
+        const offer =
+        await peer.createOffer();
 
-        await peer.setLocalDescription(offer);
+        await peer
+        .setLocalDescription(
+            offer
+        );
 
-        socket.emit("offer", {
+        socket.emit("offer",{
             offer,
             roomId
         });
     }
 });
 
-// 🟢 offer
-socket.on("offer", async (offer) => {
+// 📥 Offer
+socket.on("offer",
+async(offer)=>{
 
-    if (!peer) createPeer();
+    if(!peer)
+        createPeer();
 
-    await peer.setRemoteDescription(offer);
+    await peer
+    .setRemoteDescription(
+        offer
+    );
 
-    const answer = await peer.createAnswer();
+    const answer =
+    await peer.
+        createAnswer();
 
-    await peer.setLocalDescription(answer);
+    await peer
+    .setLocalDescription(
+        answer
+    );
 
-    socket.emit("answer", {
+    socket.emit("answer",{
         answer,
         roomId
     });
 });
 
-// 🟢 answer
-socket.on("answer", async (answer) => {
+// 📥 Answer
+socket.on("answer",
+async(answer)=>{
 
-    await peer.setRemoteDescription(answer);
+    await peer
+    .setRemoteDescription(
+        answer
+    );
 });
 
-// 🟢 ice
-socket.on("ice-candidate", async (candidate) => {
+// 📥 ICE
+socket.on("ice-candidate",
+async(candidate)=>{
 
-    try {
-        await peer.addIceCandidate(candidate);
-    } catch (e) {
+    try{
+
+        await peer
+        .addIceCandidate(
+            candidate
+        );
+
+    }catch(e){
+
         console.log(e);
     }
 });
+
+// ❌ Partner Left
+socket.on(
+"partner-disconnected",
+()=>{
+
+    statusText.innerText =
+    "User disconnected";
+
+    if(peer){
+
+        peer.close();
+
+        peer = null;
+    }
+
+    document
+    .querySelectorAll("audio")
+    .forEach(a=>a.remove());
+});
+
+// ⏳ Waiting
+socket.on("waiting",()=>{
+
+    statusText.innerText =
+    "Waiting for user...";
+});
+
 </script>
 
 </body>
