@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Velora</title>
+
+<style>
+
+body{
+    margin:0;
+    background:#0f172a;
+    color:white;
+    font-family:Arial;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+}
+
+.container{
+    width:350px;
+    background:#1e293b;
+    padding:30px;
+    border-radius:20px;
+    text-align:center;
+    box-shadow:0 0 25px rgba(0,0,0,0.4);
+}
+
+h1{
+    margin-bottom:10px;
+}
+
+#status{
+    margin:15px 0;
+    color:#94a3b8;
+}
+
+button{
+    border:none;
+    padding:12px 20px;
+    margin:10px;
+    border-radius:12px;
+    font-size:16px;
+    cursor:pointer;
+    transition:0.3s;
+}
+
+button:hover{
+    transform:scale(1.05);
+}
+
+.start{
+    background:#22c55e;
+    color:white;
+}
+
+.next{
+    background:#ef4444;
+    color:white;
+}
+
+audio{
+    width:100%;
+    margin-top:15px;
+}
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<h1>✨Velora✨</h1>
+
+<p id="status">Idle</p>
+
+<button class="start" onclick="startChat()">
+Start Chat
+</button>
+
+<button class="next" onclick="nextUser()">
+Next
+</button>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const socket = io();
+
+let localStream;
+let peer;
+let roomId;
+let isCaller = false;
+
+const statusText =
+document.getElementById("status");
+
+const servers = {
+    iceServers: [
+        { urls: "stun:stun.l.google.com:19302" }
+    ]
+};
+
+// 🚀 START CHAT (one button only)
+async function startChat(){
+
+    try{
+
+        localStream =
+        await navigator.mediaDevices
+        .getUserMedia({
+            audio:true
+        });
+
+        socket.emit("findMatch");
+
+        statusText.innerText =
+        "Searching...";
+
+    }catch(err){
+
+        alert("Microphone blocked!");
+    }
+}
+
+// ⏭️ NEXT USER
+function nextUser(){
+
+    if(peer){
+
+        peer.close();
+        peer = null;
+    }
+
+    document.querySelectorAll("audio")
+    .forEach(a=>a.remove());
+
+    socket.emit("next");
+    socket.emit("findMatch");
+
+    statusText.innerText =
+    "Searching new user...";
+}
+
+// 🔗 create peer
+function createPeer(){
+
+    peer = new RTCPeerConnection(servers);
+
+    localStream.getTracks().forEach(track=>{
+        peer.addTrack(track, localStream);
+    });
+
+    peer.ontrack = (event)=>{
+
+        console.log("TRACK RECEIVED ✔️");
+
+        const audio = document.createElement("audio");
+
+        audio.srcObject = event.streams[0];
+        audio.autoplay = true;
+        audio.controls = true;
+        audio.playsInline = true;
+
+        document.body.appendChild(audio);
+
+        audio.play().catch(console.log);
+    };
+
+    peer.onicecandidate = (event)=>{
+
+        if(event.candidate){
+
+            socket.emit("ice-candidate",{
+                candidate:event.candidate,
+                roomId
+            });
+        }
+    };
+}
+
+// 🟢 matched
+socket.on("matched", async(data)=>{
+
+    roomId = data.roomId;
+    isCaller = data.isCaller;
+
+    statusText.innerText =
+    "Connected ✔️";
+
+    createPeer();
+
+    if(isCaller){
+
+        const offer =
+        await peer.createOffer();
+
+        await peer.setLocalDescription(offer);
+
+        socket.emit("offer",{
+            offer,
+            roomId
+        });
+    }
+});
+
+// 🟢 offer
+socket.on("offer", async(offer)=>{
+
+    if(!peer) createPeer();
+
+    await peer.setRemoteDescription(offer);
+
+    const answer =
+    await peer.createAnswer();
+
+    await peer.setLocalDescription(answer);
+
+    socket.emit("answer",{
+        answer,
+        roomId
+    });
+});
+
+// 🟢 answer
+socket.on("answer", async(answer)=>{
+
+    await peer.setRemoteDescription(answer);
+});
+
+// 🟢 ICE
+socket.on("ice-candidate", async(candidate)=>{
+
+    try{
+        await peer.addIceCandidate(candidate);
+    }catch(e){
+        console.log(e);
+    }
+});
+
+// ❌ partner left
+socket.on("partner-disconnected", ()=>{
+
+    statusText.innerText =
+    "User disconnected";
+
+    if(peer){
+        peer.close();
+        peer = null;
+    }
+
+    document.querySelectorAll("audio")
+    .forEach(a=>a.remove());
+});
+
+// ⏳ waiting
+socket.on("waiting", ()=>{ statusText.innerText =
+    "Waiting...";
+});
+
+</script>
+
+</body>
+</html>
