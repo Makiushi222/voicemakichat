@@ -1,14 +1,14 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voice Chat</title>
+    <title>Voice Chat FIX</title>
 </head>
 <body>
 
-<h2>Random Voice Chat 🎤</h2>
+<h2>Voice Chat 🎤</h2>
 
+<button onclick="start()">Start</button>
 <button onclick="enableMic()">Enable Mic</button>
-<button onclick="findMatch()">Start</button>
 
 <p id="status">Idle</p>
 
@@ -17,7 +17,7 @@
 const socket = io();
 
 let localStream;
-let peerConnection;
+let peer;
 let roomId;
 
 const config = {
@@ -26,32 +26,30 @@ const config = {
     ]
 };
 
-// 🟢 Enable Mic
+// 🟢 mic
 async function enableMic() {
-    localStream = await navigator.mediaDevices.getUserMedia({
-        audio: true
-    });
-
+    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
     document.getElementById("status").innerText = "Mic ON ✔";
 }
 
-// 🟢 Start Match
-function findMatch() {
+// 🟢 start
+function start() {
     socket.emit("findMatch");
     document.getElementById("status").innerText = "Searching...";
 }
 
-// 🟢 Create Peer
+// 🟢 create peer (IMPORTANT FIX)
 function createPeer() {
-    peerConnection = new RTCPeerConnection(config);
 
-    // send audio
+    peer = new RTCPeerConnection(config);
+
+    // ADD TRACKS FIRST (VERY IMPORTANT)
     localStream.getTracks().forEach(track => {
-        peerConnection.addTrack(track, localStream);
+        peer.addTrack(track, localStream);
     });
 
-    // receive audio FIXED
-    peerConnection.ontrack = (event) => {
+    // RECEIVE AUDIO
+    peer.ontrack = (event) => {
         console.log("TRACK RECEIVED ✔");
 
         const audio = document.createElement("audio");
@@ -62,13 +60,11 @@ function createPeer() {
 
         document.body.appendChild(audio);
 
-        audio.play()
-        .then(() => console.log("AUDIO PLAYING ✔"))
-        .catch(err => console.log("BLOCKED:", err));
+        audio.play().catch(err => console.log(err));
     };
 
     // ICE
-    peerConnection.onicecandidate = (event) => {
+    peer.onicecandidate = (event) => {
         if (event.candidate) {
             socket.emit("ice-candidate", {
                 candidate: event.candidate,
@@ -78,7 +74,7 @@ function createPeer() {
     };
 }
 
-// 🟢 Matched
+// 🟢 matched
 socket.on("matched", async (id) => {
     roomId = id;
 
@@ -90,33 +86,39 @@ socket.on("matched", async (id) => {
 
     createPeer();
 
-    const offer = await peerConnection.createOffer();
-    await peerConnection.setLocalDescription(offer);
+    // WAIT 500ms (IMPORTANT FIX)
+    setTimeout(async () => {
 
-    socket.emit("offer", { offer, roomId });
+        const offer = await peer.createOffer();
+        await peer.setLocalDescription(offer);
+
+        socket.emit("offer", { offer, roomId });
+
+    }, 500);
 });
 
-// 🟢 Offer
+// 🟢 offer
 socket.on("offer", async (offer) => {
-    if (!peerConnection) createPeer();
 
-    await peerConnection.setRemoteDescription(offer);
+    if (!peer) createPeer();
 
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
+    await peer.setRemoteDescription(offer);
+
+    const answer = await peer.createAnswer();
+    await peer.setLocalDescription(answer);
 
     socket.emit("answer", { answer, roomId });
 });
 
-// 🟢 Answer
+// 🟢 answer
 socket.on("answer", async (answer) => {
-    await peerConnection.setRemoteDescription(answer);
+    await peer.setRemoteDescription(answer);
 });
 
 // 🟢 ICE
 socket.on("ice-candidate", async (candidate) => {
     try {
-        await peerConnection.addIceCandidate(candidate);
+        await peer.addIceCandidate(candidate);
     } catch (e) {
         console.log(e);
     }
