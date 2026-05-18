@@ -20,6 +20,7 @@ io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
+    // MATCHING
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
@@ -47,6 +48,7 @@ io.on("connection", (socket) => {
         }
     });
 
+    // WEBRTC SIGNALING
     socket.on("offer", (data) => {
         socket.to(data.roomId).emit("offer", data.offer);
     });
@@ -58,13 +60,15 @@ io.on("connection", (socket) => {
     socket.on("ice-candidate", (data) => {
         socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
-    
-    socket.on("mute-state", (data) => {
-    socket.to(data.roomId).emit("partner-mute-state", {
-        isMuted: data.isMuted
-    });
-});
 
+    // MUTE SYNC
+    socket.on("mute-state", (data) => {
+        socket.to(data.roomId).emit("partner-mute-state", {
+            isMuted: data.isMuted
+        });
+    });
+
+    // NEXT
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
