@@ -1,86 +1,228 @@
-const express = require("express");
-const http = require("http");
-const { Server } = require("socket.io");
+<!DOCTYPE html>
+<html lang="en">
 
-const app = express();
-const server = http.createServer(app);
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Velora</title>
 
-const io = new Server(server, {
-    cors: { origin: "*" }
-});
+<style>
 
-app.use(express.static("public"));
+body{
+    margin:0;
+    background: radial-gradient(circle,#0f172a,#020617);
+    color:white;
+    font-family:Arial;
+    display:flex;
+    justify-content:center;
+    align-items:center;
+    height:100vh;
+    transition:0.3s;
+}
 
-let waitingUser = null;
+/* CARD */
+.container{
+    width:370px;
+    background:#1e293b;
+    padding:30px;
+    border-radius:20px;
+    text-align:center;
+    box-shadow:0 0 40px rgba(0,0,0,0.6);
+}
 
-io.on("connection", (socket) => {
+/* LOGO */
+.logo{
+    width:90px;
+    height:90px;
+    border-radius:18px;
+    object-fit:cover;
+    transition:0.25s ease;
+    box-shadow:0 0 10px rgba(148,163,184,0.3);
+}
 
-    console.log("Connected:", socket.id);
+/* 🟢 normal */
+.logo.speaking{
+    box-shadow:0 0 20px #22c55e,
+               0 0 40px #22c55e;
+}
 
-    // MATCH
-    socket.on("findMatch", () => {
+/* 🟣 you muted */
+.logo.selfMuted{
+    box-shadow:0 0 20px #a855f7,
+               0 0 40px #a855f7;
+}
 
-        if (waitingUser && waitingUser.id !== socket.id) {
+/* 🔴 partner muted */
+.logo.partnerMuted{
+    box-shadow:0 0 20px #ef4444,
+               0 0 40px #ef4444;
+}
 
-            const roomId = room-${waitingUser.id}-${socket.id};
+h1{
+    margin:10px 0;
+    background:linear-gradient(90deg,#22c55e,#38bdf8);
+    -webkit-background-clip:text;
+    -webkit-text-fill-color:transparent;
+}
 
-            socket.join(roomId);
-            waitingUser.join(roomId);
+#status{
+    color:#94a3b8;
+    margin:15px 0;
+}
 
-            waitingUser.emit("matched", { roomId, isCaller: true });
-            socket.emit("matched", { roomId, isCaller: false });
+/* BUTTONS */
+button{
+    border:none;
+    padding:12px 18px;
+    margin:6px;
+    border-radius:12px;
+    cursor:pointer;
+    transition:0.3s;
+}
 
-            waitingUser = null;
+button:hover{ transform:scale(1.05); }
 
-        } else {
-            waitingUser = socket;
-            socket.emit("waiting");
-        }
-    });
+.start{background:#22c55e;color:white;}
+.next{background:#ef4444;color:white;}
+.mute{background:#3b82f6;color:white;}
 
-    // SIGNALING
-    socket.on("offer", (data) => {
-        socket.to(data.roomId).emit("offer", data.offer);
-    });
+/* TOAST */
+.toast{
+    margin-top:12px;
+    padding:12px 16px;
+    border-radius:12px;
+    background:rgba(239,68,68,0.15);
+    border:1px solid rgba(239,68,68,0.5);
+    color:#ef4444;
+    font-weight:bold;
+    backdrop-filter: blur(10px);
+    animation: pop 0.25s ease;
+}
 
-    socket.on("answer", (data) => {
-        socket.to(data.roomId).emit("answer", data.answer);
-    });
+.hidden{ display:none; }
 
-    socket.on("ice-candidate", (data) => {
-        socket.to(data.roomId).emit("ice-candidate", data.candidate);
-    });
+@keyframes pop{
+    from{transform:scale(0.8);opacity:0;}
+    to{transform:scale(1);opacity:1;}
+}
 
-    // MUTE SYNC
-    socket.on("mute-state", (data) => {
-        socket.to(data.roomId).emit("partner-mute-state", {
-            isMuted: data.isMuted
-        });
-    });
+/* SCREEN FLASH */
+body.flash-red{
+    animation: flashRed 0.6s ease;
+}
 
-    // NEXT
-    socket.on("next", () => {
+@keyframes flashRed{
+    0%{background:#0f172a;}
+    50%{background:rgba(239,68,68,0.25);}
+    100%{background:#0f172a;}
+}
 
-        socket.rooms.forEach(room => {
-            if (room !== socket.id) {
-                socket.leave(room);
-                socket.to(room).emit("partner-disconnected");
+audio{ display:none; }
+
+</style>
+</head>
+
+<body>
+
+<div class="container">
+
+<img src="/velora.jpg" class="logo" id="logo">
+
+<h1>Velora</h1>
+
+<p id="status">Idle</p>
+
+<button class="start" onclick="startChat()">Start Chat</button>
+<button class="next" onclick="nextUser()">Next</button>
+<button class="mute" id="muteBtn" onclick="toggleMute()">Mute 🎤</button>
+
+<div id="toast" class="toast hidden">
+    ❌ User disconnected
+</div>
+
+</div>
+
+<script src="/socket.io/socket.io.js"></script>
+
+<script>
+
+const socket = io();
+
+let localStream;
+let peer;
+let roomId;
+
+let isMuted = false;
+let partnerMuted = false;
+
+const logo = document.getElementById("logo");
+const statusText = document.getElementById("status");
+const toast = document.getElementById("toast");
+
+// UPDATE UI STATE
+function updateLogo(){
+
+    logo.classList.remove("speaking","selfMuted","partnerMuted");
+
+    if(isMuted){
+        logo.classList.add("selfMuted");
+    }
+    else if(partnerMuted){
+        logo.classList.add("partnerMuted");
+    }
+    else{
+        logo.classList.add("speaking");
+    }
+}
+
+// START
+async function startChat(){
+
+    try{
+
+        localStream = await navigator.mediaDevices.getUserMedia({
+            audio:{
+                echoCancellation:true,
+                noiseSuppression:true,
+                autoGainControl:true
             }
         });
 
-        if (waitingUser && waitingUser.id === socket.id) {
-            waitingUser = null;
-        }
+        socket.emit("findMatch");
+        statusText.innerText = "Searching...";
 
-        socket.emit("waiting");
-    });
-});
+    }catch(err){
+        alert("Microphone blocked!");
+    }
+}
 
-const PORT = process.env.PORT || 3000;
+// NEXT
+function nextUser(){
 
-server.listen(PORT, () => {
-    console.log("Velora running on port", PORT);
-}); track.enabled = !isMuted;
+    statusText.innerText = "Switching...";
+
+    if(peer){
+        peer.close();
+        peer = null;
+    }
+
+    document.querySelectorAll("audio").forEach(a=>a.remove());
+
+    socket.emit("next");
+
+    setTimeout(()=>{
+        socket.emit("findMatch");
+    },500);
+}
+
+// MUTE
+function toggleMute(){
+
+    if(!localStream) return;
+
+    isMuted = !isMuted;
+
+    localStream.getAudioTracks().forEach(track=>{ track.enabled = !isMuted;
     });
 
     socket.emit("mute-state",{
@@ -131,7 +273,7 @@ socket.on("matched", async(data)=>{
     isMuted = false;
     partnerMuted = false;
 
-    statusText.innerText = "Connected ✔";
+    statusText.innerText = "Connected ✔️";
 
     updateLogo();
 
