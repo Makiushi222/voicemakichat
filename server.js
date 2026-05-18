@@ -6,10 +6,7 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: {
-        origin: "*",
-        methods: ["GET", "POST"]
-    }
+    cors: { origin: "*" }
 });
 
 app.use(express.static("public"));
@@ -20,25 +17,18 @@ io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    // MATCHING
+    // MATCH
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
 
-            const roomId = "room-" + waitingUser.id + "-" + socket.id;
+            const roomId = room-${waitingUser.id}-${socket.id};
 
             socket.join(roomId);
             waitingUser.join(roomId);
 
-            waitingUser.emit("matched", {
-                roomId,
-                isCaller: true
-            });
-
-            socket.emit("matched", {
-                roomId,
-                isCaller: false
-            });
+            waitingUser.emit("matched", { roomId, isCaller: true });
+            socket.emit("matched", { roomId, isCaller: false });
 
             waitingUser = null;
 
@@ -48,7 +38,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // WEBRTC SIGNALING
+    // SIGNALING
     socket.on("offer", (data) => {
         socket.to(data.roomId).emit("offer", data.offer);
     });
@@ -86,6 +76,8 @@ io.on("connection", (socket) => {
     });
 });
 
-server.listen(process.env.PORT || 3000, () => {
-    console.log("Velora running");
+const PORT = process.env.PORT || 3000;
+
+server.listen(PORT, () => {
+    console.log("Velora running on port", PORT);
 });
