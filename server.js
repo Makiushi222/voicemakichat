@@ -14,10 +14,9 @@ app.use(express.static("."));
 let waitingUser = null;
 
 io.on("connection", (socket) => {
-    console.log("User connected:", socket.id);
+    console.log("User:", socket.id);
 
     socket.on("findMatch", () => {
-
         if (waitingUser && waitingUser.id !== socket.id) {
 
             const roomId = "room-" + waitingUser.id + "-" + socket.id;
