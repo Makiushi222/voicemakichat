@@ -1,26 +1,28 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>Voice Chat FIX</title>
+    <title>Voice Chat</title>
 </head>
 <body>
 
 <h2>Voice Chat 🎤</h2>
 
-<button onclick="start()">Start</button>
 <button onclick="enableMic()">Enable Mic</button>
+<button onclick="start()">Start</button>
 
 <p id="status">Idle</p>
 
 <script src="/socket.io/socket.io.js"></script>
+
 <script>
 const socket = io();
 
 let localStream;
 let peer;
 let roomId;
+let isCaller = false;
 
-const config = {
+const servers = {
     iceServers: [
         { urls: "stun:stun.l.google.com:19302" }
     ]
@@ -28,8 +30,11 @@ const config = {
 
 // 🟢 mic
 async function enableMic() {
-    localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    document.getElementById("status").innerText = "Mic ON ✔";
+    localStream = await navigator.mediaDevices.getUserMedia({
+        audio: true
+    });
+
+    document.getElementById("status").innerText = "Mic enabled ✔️";
 }
 
 // 🟢 start
@@ -38,29 +43,31 @@ function start() {
     document.getElementById("status").innerText = "Searching...";
 }
 
-// 🟢 create peer (IMPORTANT FIX)
+// 🟢 peer
 function createPeer() {
 
-    peer = new RTCPeerConnection(config);
+    peer = new RTCPeerConnection(servers);
 
-    // ADD TRACKS FIRST (VERY IMPORTANT)
+    // SEND AUDIO
     localStream.getTracks().forEach(track => {
         peer.addTrack(track, localStream);
     });
 
     // RECEIVE AUDIO
     peer.ontrack = (event) => {
-        console.log("TRACK RECEIVED ✔");
+
+        console.log("TRACK RECEIVED ✔️");
 
         const audio = document.createElement("audio");
+
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
-        audio.playsInline = true;
         audio.controls = true;
+        audio.playsInline = true;
 
         document.body.appendChild(audio);
 
-        audio.play().catch(err => console.log(err));
+        audio.play().catch(console.log);
     };
 
     // ICE
@@ -75,26 +82,27 @@ function createPeer() {
 }
 
 // 🟢 matched
-socket.on("matched", async (id) => {
-    roomId = id;
+socket.on("matched", async (data) => {
 
-    document.getElementById("status").innerText = "Matched ✔";
+    roomId = data.roomId;
+    isCaller = data.isCaller;
 
-    if (!localStream) {
-        localStream = await navigator.mediaDevices.getUserMedia({ audio: true });
-    }
+    document.getElementById("status").innerText = "Matched ✔️";
 
     createPeer();
 
-    // WAIT 500ms (IMPORTANT FIX)
-    setTimeout(async () => {
+    // ONLY CALLER SENDS OFFER
+    if (isCaller) {
 
         const offer = await peer.createOffer();
+
         await peer.setLocalDescription(offer);
 
-        socket.emit("offer", { offer, roomId });
-
-    }, 500);
+        socket.emit("offer", {
+            offer,
+            roomId
+        });
+    }
 });
 
 // 🟢 offer
@@ -105,18 +113,24 @@ socket.on("offer", async (offer) => {
     await peer.setRemoteDescription(offer);
 
     const answer = await peer.createAnswer();
+
     await peer.setLocalDescription(answer);
 
-    socket.emit("answer", { answer, roomId });
+    socket.emit("answer", {
+        answer,
+        roomId
+    });
 });
 
 // 🟢 answer
 socket.on("answer", async (answer) => {
+
     await peer.setRemoteDescription(answer);
 });
 
-// 🟢 ICE
+// 🟢 ice
 socket.on("ice-candidate", async (candidate) => {
+
     try {
         await peer.addIceCandidate(candidate);
     } catch (e) {
