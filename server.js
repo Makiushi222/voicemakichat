@@ -76,8 +76,6 @@ io.on("connection", (socket) => {
     });
 });
 
-const PORT = process.env.PORT || 3000;
-
-server.listen(PORT, () => {
+server.listen(process.env.PORT || 3000, () => {
     console.log("Velora running");
 });
