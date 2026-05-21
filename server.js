@@ -13,22 +13,36 @@ app.use(express.static("public"));
 
 let waitingUser = null;
 
+// 🧠 clean waiting user
+function clearWaiting(socket){
+    if(waitingUser && waitingUser.id === socket.id){
+        waitingUser = null;
+    }
+}
+
 io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    // MATCH
+    // 🎯 MATCH
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
 
-            const roomId = `room-${waitingUser.id}-${socket.id}`;
+            const roomId = room-${waitingUser.id}-${socket.id};
 
             socket.join(roomId);
             waitingUser.join(roomId);
 
-            waitingUser.emit("matched", { roomId, isCaller: true });
-            socket.emit("matched", { roomId, isCaller: false });
+            waitingUser.emit("matched", {
+                roomId,
+                isCaller: true
+            });
+
+            socket.emit("matched", {
+                roomId,
+                isCaller: false
+            });
 
             waitingUser = null;
 
@@ -38,7 +52,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // SIGNALING
+    // 🎧 WEBRTC SIGNALING
     socket.on("offer", (data) => {
         socket.to(data.roomId).emit("offer", data.offer);
     });
@@ -51,14 +65,14 @@ io.on("connection", (socket) => {
         socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
 
-    // MUTE SYNC
+    // 🔇 MUTE SYNC
     socket.on("mute-state", (data) => {
         socket.to(data.roomId).emit("partner-mute-state", {
             isMuted: data.isMuted
         });
     });
 
-    // NEXT
+    // ⏭ NEXT USER
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
@@ -68,12 +82,17 @@ io.on("connection", (socket) => {
             }
         });
 
-        if (waitingUser && waitingUser.id === socket.id) {
-            waitingUser = null;
-        }
+        clearWaiting(socket);
 
         socket.emit("waiting");
     });
+
+    // ❌ DISCONNECT CLEANUP
+    socket.on("disconnect", () => {
+        clearWaiting(socket);
+        console.log("Disconnected:", socket.id);
+    });
+
 });
 
 const PORT = process.env.PORT || 3000;
