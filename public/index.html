@@ -17,7 +17,6 @@ body{
     justify-content:center;
     align-items:center;
     height:100vh;
-    transition:0.3s;
 }
 
 /* CARD */
@@ -40,31 +39,25 @@ body{
     box-shadow:0 0 10px rgba(148,163,184,0.3);
 }
 
-/* 🟢 normal */
+/* GREEN */
 .logo.speaking{
     box-shadow:0 0 20px #22c55e,
                0 0 40px #22c55e;
 }
 
-/* 🟣 you muted */
+/* PURPLE (you muted) */
 .logo.selfMuted{
     box-shadow:0 0 20px #a855f7,
                0 0 40px #a855f7;
 }
 
-/* 🔴 partner muted */
+/* RED (partner muted) */
 .logo.partnerMuted{
     box-shadow:0 0 20px #ef4444,
                0 0 40px #ef4444;
 }
 
-h1{
-    margin:10px 0;
-    background:linear-gradient(90deg,#22c55e,#38bdf8);
-    -webkit-background-clip:text;
-    -webkit-text-fill-color:transparent;
-}
-
+/* STATUS */
 #status{
     color:#94a3b8;
     margin:15px 0;
@@ -80,13 +73,15 @@ button{
     transition:0.3s;
 }
 
-button:hover{ transform:scale(1.05); }
+button:hover{
+    transform:scale(1.05);
+}
 
 .start{background:#22c55e;color:white;}
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
 
-/* TOAST */
+/* DISCONNECT TOAST */
 .toast{
     margin-top:12px;
     padding:12px 16px;
@@ -95,29 +90,22 @@ button:hover{ transform:scale(1.05); }
     border:1px solid rgba(239,68,68,0.5);
     color:#ef4444;
     font-weight:bold;
-    backdrop-filter: blur(10px);
-    animation: pop 0.25s ease;
 }
 
-.hidden{ display:none; }
+.hidden{display:none;}
 
-@keyframes pop{
-    from{transform:scale(0.8);opacity:0;}
-    to{transform:scale(1);opacity:1;}
-}
-
-/* SCREEN FLASH */
+/* FLASH */
 body.flash-red{
-    animation: flashRed 0.6s ease;
+    animation:flash 0.6s ease;
 }
 
-@keyframes flashRed{
+@keyframes flash{
     0%{background:#0f172a;}
     50%{background:rgba(239,68,68,0.25);}
     100%{background:#0f172a;}
 }
 
-audio{ display:none; }
+audio{display:none;}
 
 </style>
 </head>
@@ -159,7 +147,7 @@ const logo = document.getElementById("logo");
 const statusText = document.getElementById("status");
 const toast = document.getElementById("toast");
 
-// UPDATE UI STATE
+// 🎯 UPDATE UI STATE
 function updateLogo(){
 
     logo.classList.remove("speaking","selfMuted","partnerMuted");
@@ -175,28 +163,25 @@ function updateLogo(){
     }
 }
 
-// START
+// 🚀 START
 async function startChat(){
 
     try{
 
         localStream = await navigator.mediaDevices.getUserMedia({
-            audio:{
-                echoCancellation:true,
-                noiseSuppression:true,
-                autoGainControl:true
-            }
+            audio:true
         });
 
         socket.emit("findMatch");
+
         statusText.innerText = "Searching...";
 
     }catch(err){
-        alert("Microphone blocked!");
+        alert("Microphone blocked");
     }
 }
 
-// NEXT
+// ⏭ NEXT
 function nextUser(){
 
     statusText.innerText = "Switching...";
@@ -215,7 +200,7 @@ function nextUser(){
     },500);
 }
 
-// MUTE
+// 🎤 MUTE
 function toggleMute(){
 
     if(!localStream) return;
@@ -234,7 +219,7 @@ function toggleMute(){
     updateLogo();
 }
 
-// PEER
+// 🔗 PEER
 function createPeer(){
 
     peer = new RTCPeerConnection({
@@ -247,12 +232,9 @@ function createPeer(){
         peer.addTrack(track, localStream);
     });
 
-    peer.ontrack = (event)=>{
-
-        const audio = document.createElement("audio");
+    peer.ontrack = (event)=>{ const audio = document.createElement("audio");
         audio.srcObject = event.streams[0];
         audio.autoplay = true;
-
         document.body.appendChild(audio);
     };
 
@@ -266,7 +248,7 @@ function createPeer(){
     };
 }
 
-// MATCHED
+// 🤝 MATCHED
 socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
@@ -314,13 +296,13 @@ socket.on("ice-candidate", async(candidate)=>{
     }catch(e){}
 });
 
-// PARTNER MUTE
+// 🔴 PARTNER MUTE
 socket.on("partner-mute-state",(data)=>{
     partnerMuted = data.isMuted;
     updateLogo();
 });
 
-// DISCONNECT (PRO DESIGN PROOF)
+// ❌ DISCONNECT
 socket.on("partner-disconnected", ()=>{
 
     statusText.innerText = "Disconnected";
@@ -329,11 +311,8 @@ socket.on("partner-disconnected", ()=>{
     document.body.classList.add("flash-red");
 
     setTimeout(()=>{
-        document.body.classList.remove("flash-red");
-    },600);
-
-    setTimeout(()=>{
         toast.classList.add("hidden");
+        document.body.classList.remove("flash-red");
     },3000);
 
     isMuted = false;
