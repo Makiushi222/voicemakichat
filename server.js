@@ -10,11 +10,11 @@ const io = new Server(server, {
     transports: ["websocket", "polling"]
 });
 
-// frontend folder
 app.use(express.static("public"));
 
 let waitingUser = null;
 
+// helper
 function clearWaiting(socket){
     if(waitingUser && waitingUser.id === socket.id){
         waitingUser = null;
@@ -23,12 +23,16 @@ function clearWaiting(socket){
 
 io.on("connection", (socket) => {
 
-    console.log("User connected:", socket.id);
+    console.log("Connected:", socket.id);
+
+    socket.on("setName", (name) => {
+        socket.username = name || "User";
+    });
 
     // MATCH SYSTEM
     socket.on("findMatch", () => {
 
-        if (waitingUser && waitingUser.id !== socket.id) {
+        if(waitingUser && waitingUser.id !== socket.id){
 
             const roomId = "room-" + waitingUser.id + "-" + socket.id;
 
@@ -37,12 +41,14 @@ io.on("connection", (socket) => {
 
             waitingUser.emit("matched", {
                 roomId,
-                isCaller: true
+                isCaller: true,
+                partnerName: socket.username || "User"
             });
 
             socket.emit("matched", {
                 roomId,
-                isCaller: false
+                isCaller: false,
+                partnerName: waitingUser.username || "User"
             });
 
             waitingUser = null;
@@ -53,7 +59,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // WEBRTC SIGNALING
+    // SIGNALING
     socket.on("offer", d => socket.to(d.roomId).emit("offer", d.offer));
     socket.on("answer", d => socket.to(d.roomId).emit("answer", d.answer));
     socket.on("ice-candidate", d => socket.to(d.roomId).emit("ice-candidate", d.candidate));
@@ -69,20 +75,18 @@ io.on("connection", (socket) => {
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
-            if (room !== socket.id) {
+            if(room !== socket.id){
                 socket.leave(room);
                 socket.to(room).emit("partner-disconnected");
             }
         });
 
         clearWaiting(socket);
-
         socket.emit("waiting");
     });
 
     socket.on("disconnect", () => {
         clearWaiting(socket);
-        console.log("Disconnected:", socket.id);
     });
 
 });
@@ -90,5 +94,5 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log("Velora v3 running on port", PORT);
+    console.log("Velora v4 running on port", PORT);
 });
