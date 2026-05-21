@@ -1,16 +1,13 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Velora v5</title>
-
 <style>
 
 body{
     margin:0;
-    background: radial-gradient(circle,#0f172a,#020617);
+    background:#0f172a;
     color:white;
     font-family:Arial;
     display:flex;
@@ -19,36 +16,16 @@ body{
     height:100vh;
 }
 
-.container{
+.box{
     width:380px;
     background:#1e293b;
-    padding:25px;
+    padding:20px;
     border-radius:20px;
     text-align:center;
 }
 
-.logo{
-    width:90px;
-    height:90px;
-    border-radius:18px;
-    object-fit:cover;
-    transition:0.3s;
-}
-
-.speaking{box-shadow:0 0 20px #22c55e;}
-.mutedSelf{box-shadow:0 0 20px #a855f7;}
-.mutedPartner{box-shadow:0 0 20px #ef4444;}
-
-input{
-    width:90%;
-    padding:10px;
-    margin-bottom:10px;
-    border-radius:10px;
-    border:none;
-}
-
 button{
-    padding:10px 15px;
+    padding:10px;
     margin:5px;
     border:none;
     border-radius:10px;
@@ -59,42 +36,42 @@ button{
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
 
-#status{color:#94a3b8;margin:10px 0;}
-#partner{color:#cbd5e1;margin:10px 0;}
-
-.toast{
-    display:none;
-    margin-top:10px;
-    background:rgba(239,68,68,0.2);
-    border:1px solid #ef4444;
+#chat{
+    height:120px;
+    overflow:auto;
+    background:#0b1220;
+    margin:10px 0;
     padding:10px;
     border-radius:10px;
+    text-align:left;
 }
 
-audio{display:none;}
+input{
+    width:70%;
+    padding:8px;
+    border-radius:8px;
+    border:none;
+}
 
 </style>
 </head>
 
 <body>
 
-<div class="container">
-
-<img src="/velora.jpg" class="logo" id="logo">
+<div class="box">
 
 <h2>Velora v5</h2>
 
-<input id="nameInput" placeholder="Enter name">
-<button onclick="setName()">Set</button>
-
 <p id="status">Idle</p>
-<p id="partner">No partner</p>
 
-<button class="start" onclick="startChat()">Start</button>
-<button class="next" onclick="nextUser()">Next</button>
+<button class="start" onclick="start()">Start</button>
+<button class="next" onclick="next()">Next</button>
 <button class="mute" onclick="toggleMute()">Mute</button>
 
-<div class="toast" id="toast">Cooldown active...</div>
+<div id="chat"></div>
+
+<input id="msg">
+<button onclick="send()">Send</button>
 
 </div>
 
@@ -104,68 +81,51 @@ audio{display:none;}
 
 const socket = io();
 
-let localStream;
+let stream;
 let peer;
 let roomId;
+let muted=false;
 
-let isMuted = false;
-let partnerMuted = false;
+const chat = document.getElementById("chat");
 
-const logo = document.getElementById("logo");
-const statusText = document.getElementById("status");
-const partnerText = document.getElementById("partner");
-const toast = document.getElementById("toast");
-
-function setName(){
-    socket.emit("setName", document.getElementById("nameInput").value);
+function add(msg){
+    const d=document.createElement("div");
+    d.innerText=msg;
+    chat.appendChild(d);
 }
 
-function updateUI(){
+async function start(){
 
-    logo.classList.remove("speaking","mutedSelf","mutedPartner");
-
-    if(isMuted){
-        logo.classList.add("mutedSelf");
-    }
-    else if(partnerMuted){
-        logo.classList.add("mutedPartner");
-    }
-    else{
-        logo.classList.add("speaking");
-    }
-}
-
-async function startChat(){
-
-    localStream = await navigator.mediaDevices.getUserMedia({
+    stream = await navigator.mediaDevices.getUserMedia({
         audio:true
     });
 
     socket.emit("findMatch");
-    statusText.innerText = "Searching...";
 }
 
-function nextUser(){
-
-    if(peer) peer.close();
-
+function next(){
     socket.emit("next");
     socket.emit("findMatch");
-
-    statusText.innerText = "Searching...";
 }
 
 function toggleMute(){
 
-    isMuted = !isMuted;
+    muted=!muted;
 
-    localStream.getAudioTracks().forEach(t=>{
-        t.enabled = !isMuted;
+    stream.getAudioTracks().forEach(t=>{
+        t.enabled=!muted;
     });
 
-    socket.emit("mute-state",{roomId,isMuted});
+    socket.emit("mute-state",{roomId,isMuted:muted});
+}
 
-    updateUI();
+function send(){
+
+    const text=document.getElementById("msg").value;
+
+    socket.emit("message",{roomId,text});
+
+    add("You: "+text);
 }
 
 function createPeer(){
@@ -174,84 +134,68 @@ function createPeer(){
         iceServers:[{urls:"stun:stun.l.google.com:19302"}]
     });
 
-    localStream.getTracks().forEach(t=>{
-        peer.addTrack(t, localStream);
+    stream.getTracks().forEach(t=>{
+        peer.addTrack(t,stream);
     });
 
-    peer.ontrack = (e)=>{
-        const audio = document.createElement("audio");
-        audio.srcObject = e.streams[0];
-        audio.autoplay = true;
+    peer.ontrack=(e)=>{
+
+        const audio=document.createElement("audio");
+        audio.srcObject=e.streams[0];
+        audio.autoplay=true;
         document.body.appendChild(audio);
     };
 
-    peer.onicecandidate = (e)=>{
+    peer.onicecandidate=(e)=>{
         if(e.candidate){
-            socket.emit("ice-candidate",{candidate:e.candidate,roomId});
+            socket.emit("ice-candidate",{roomId,candidate:e.candidate});
         }
     };
 }
 
-socket.on("matched", async(data)=>{
+socket.on("matched",(data)=>{
 
-    roomId = data.roomId;
-
-    isMuted = false;
-    partnerMuted = false;
-
-    partnerText.innerText = "Partner: " + data.partnerName;
-
-    statusText.innerText = "Connected";
-
-    updateUI();
+    roomId=data.roomId;
 
     createPeer();
 
     if(data.isCaller){
 
-        const offer = await peer.createOffer();
-        await peer.setLocalDescription(offer);
-
-        socket.emit("offer",{offer,roomId});
+        peer.createOffer().then(o=>{
+            peer.setLocalDescription(o);
+            socket.emit("offer",{roomId,offer:o});
+        });
     }
 });
 
-socket.on("offer", async(o)=>{
-    if(!peer) createPeer();
+socket.on("offer",async(o)=>{
 
     await peer.setRemoteDescription(o);
 
-    const ans = await peer.createAnswer();
+    const ans=await peer.createAnswer();
     await peer.setLocalDescription(ans);
 
-    socket.emit("answer",{answer:ans,roomId});
+    socket.emit("answer",{roomId,answer:ans});
 });
 
-socket.on("answer", async(a)=>{
-    await peer.setRemoteDescription(a);
+socket.on("answer",a=>{
+    peer.setRemoteDescription(a);
 });
 
-socket.on("ice-candidate", async(c)=>{
+socket.on("ice-candidate",async(c)=>{
     try{await peer.addIceCandidate(c);}catch(e){}
 });
 
-socket.on("partner-mute-state",(d)=>{
-    partnerMuted = d.isMuted;
-    updateUI();
+socket.on("message",(d)=>{
+    add("Partner: "+d.text);
 });
 
-socket.on("partner-disconnected",()=>{
-    partnerText.innerText = "Disconnected";
-    if(peer) peer.close();
-});
-
-socket.on("cooldown",()=>{
-    toast.style.display = "block";
-    setTimeout(()=>toast.style.display="none",2000);
+socket.on("partner-left",()=>{
+    add("Partner disconnected");
 });
 
 socket.on("waiting",()=>{
-    statusText.innerText = "Waiting...";
+    document.getElementById("status").innerText="Waiting...";
 });
 
 </script>
