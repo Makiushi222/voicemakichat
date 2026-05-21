@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Velora v4</title>
+<title>Velora v5</title>
 
 <style>
 
@@ -39,14 +39,12 @@ body{
 .mutedSelf{box-shadow:0 0 20px #a855f7;}
 .mutedPartner{box-shadow:0 0 20px #ef4444;}
 
-#status{color:#94a3b8;margin:10px 0;}
-
 input{
     width:90%;
     padding:10px;
+    margin-bottom:10px;
     border-radius:10px;
     border:none;
-    margin-bottom:10px;
 }
 
 button{
@@ -61,9 +59,16 @@ button{
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
 
-#partner{
+#status{color:#94a3b8;margin:10px 0;}
+#partner{color:#cbd5e1;margin:10px 0;}
+
+.toast{
+    display:none;
     margin-top:10px;
-    color:#cbd5e1;
+    background:rgba(239,68,68,0.2);
+    border:1px solid #ef4444;
+    padding:10px;
+    border-radius:10px;
 }
 
 audio{display:none;}
@@ -77,19 +82,19 @@ audio{display:none;}
 
 <img src="/velora.jpg" class="logo" id="logo">
 
-<h2>Velora v4</h2>
+<h2>Velora v5</h2>
 
-<input id="nameInput" placeholder="Enter your name">
-
-<button onclick="setName()">Set Name</button>
+<input id="nameInput" placeholder="Enter name">
+<button onclick="setName()">Set</button>
 
 <p id="status">Idle</p>
-
 <p id="partner">No partner</p>
 
 <button class="start" onclick="startChat()">Start</button>
 <button class="next" onclick="nextUser()">Next</button>
 <button class="mute" onclick="toggleMute()">Mute</button>
+
+<div class="toast" id="toast">Cooldown active...</div>
 
 </div>
 
@@ -109,10 +114,10 @@ let partnerMuted = false;
 const logo = document.getElementById("logo");
 const statusText = document.getElementById("status");
 const partnerText = document.getElementById("partner");
+const toast = document.getElementById("toast");
 
 function setName(){
-    const name = document.getElementById("nameInput").value;
-    socket.emit("setName", name);
+    socket.emit("setName", document.getElementById("nameInput").value);
 }
 
 function updateUI(){
@@ -132,10 +137,11 @@ function updateUI(){
 
 async function startChat(){
 
-    localStream = await navigator.mediaDevices.getUserMedia({audio:true});
+    localStream = await navigator.mediaDevices.getUserMedia({
+        audio:true
+    });
 
     socket.emit("findMatch");
-
     statusText.innerText = "Searching...";
 }
 
@@ -147,7 +153,6 @@ function nextUser(){
     socket.emit("findMatch");
 
     statusText.innerText = "Searching...";
-    partnerText.innerText = "No partner";
 }
 
 function toggleMute(){
@@ -169,8 +174,8 @@ function createPeer(){
         iceServers:[{urls:"stun:stun.l.google.com:19302"}]
     });
 
-    localStream.getTracks().forEach(track=>{
-        peer.addTrack(track, localStream);
+    localStream.getTracks().forEach(t=>{
+        peer.addTrack(t, localStream);
     });
 
     peer.ontrack = (e)=>{
@@ -191,10 +196,10 @@ socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
 
-    partnerText.innerText = "Partner: " + data.partnerName;
-
     isMuted = false;
     partnerMuted = false;
+
+    partnerText.innerText = "Partner: " + data.partnerName;
 
     statusText.innerText = "Connected";
 
@@ -227,7 +232,7 @@ socket.on("answer", async(a)=>{
 });
 
 socket.on("ice-candidate", async(c)=>{
-    try{ await peer.addIceCandidate(c); }catch(e){}
+    try{await peer.addIceCandidate(c);}catch(e){}
 });
 
 socket.on("partner-mute-state",(d)=>{
@@ -236,8 +241,13 @@ socket.on("partner-mute-state",(d)=>{
 });
 
 socket.on("partner-disconnected",()=>{
-    partnerText.innerText = "Partner disconnected";
+    partnerText.innerText = "Disconnected";
     if(peer) peer.close();
+});
+
+socket.on("cooldown",()=>{
+    toast.style.display = "block";
+    setTimeout(()=>toast.style.display="none",2000);
 });
 
 socket.on("waiting",()=>{
