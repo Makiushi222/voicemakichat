@@ -12,100 +12,134 @@ const io = new Server(server, {
 
 app.use(express.static("public"));
 
-let waitingUser = null;
-const cooldown = new Map(); // anti spam match
+let waitingUsers = [];
+const cooldown = new Map();
+const COOLDOWN_TIME = 4000;
 
-function clearWaiting(socket){
-    if(waitingUser && waitingUser.id === socket.id){
-        waitingUser = null;
+// ---------------- AI MATCH ----------------
+function smartMatch(socket){
+
+    const now = Date.now();
+
+    if(cooldown.has(socket.id)){
+        if(now - cooldown.get(socket.id) < COOLDOWN_TIME){
+            socket.emit("cooldown",{msg:"Wait before searching again"});
+            return false;
+        }
     }
+
+    cooldown.set(socket.id, now);
+
+    let bestIndex = -1;
+    let bestScore = -1;
+
+    for(let i=0;i<waitingUsers.length;i++){
+
+        const user = waitingUsers[i];
+        if(user.id === socket.id) continue;
+
+        let score = 0;
+
+        // country boost
+        if(user.country && user.country === socket.country){
+            score += 10;
+        }
+
+        // random AI factor
+        score += Math.random() * 5;
+
+        if(score > bestScore){
+            bestScore = score;
+            bestIndex = i;
+        }
+    }
+
+    if(bestIndex !== -1){
+
+        const partner = waitingUsers.splice(bestIndex,1)[0];
+
+        const roomId = "room-" + partner.id + "-" + socket.id;
+
+        socket.join(roomId);
+        partner.join(roomId);
+
+        partner.emit("matched",{
+            roomId,
+            isCaller:true,
+            partnerCountry: socket.country || "unknown"
+        });
+
+        socket.emit("matched",{
+            roomId,
+            isCaller:false,
+            partnerCountry: partner.country || "unknown"
+        });
+
+        return true;
+    }
+
+    return false;
 }
 
-function inCooldown(id){
-    return cooldown.get(id) && Date.now() < cooldown.get(id);
-}
-
+// ---------------- MAIN ----------------
 io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    socket.on("setName", (name) => {
-        socket.username = name || "User";
+    socket.on("setCountry",(country)=>{
+        socket.country = country || "unknown";
     });
 
-    // MATCH SYSTEM (ANTI SPAM)
-    socket.on("findMatch", () => {
+    socket.on("findMatch",()=>{
 
-        if(inCooldown(socket.id)){
-            socket.emit("cooldown");
-            return;
-        }
+        const matched = smartMatch(socket);
 
-        if(waitingUser && waitingUser.id !== socket.id){
-
-            const roomId = "room-" + waitingUser.id + "-" + socket.id;
-
-            socket.join(roomId);
-            waitingUser.join(roomId);
-
-            waitingUser.emit("matched", {
-                roomId,
-                isCaller: true,
-                partnerName: socket.username || "User"
-            });
-
-            socket.emit("matched", {
-                roomId,
-                isCaller: false,
-                partnerName: waitingUser.username || "User"
-            });
-
-            waitingUser = null;
-
-        } else {
-            waitingUser = socket;
+        if(!matched){
+            waitingUsers.push(socket);
             socket.emit("waiting");
         }
     });
 
-    // WEBRTC AUDIO ONLY
+    // CHAT
+    socket.on("message",(data)=>{
+        socket.to(data.roomId).emit("message",{
+            text:data.text,
+            from:socket.id
+        });
+    });
+
+    // VOICE (WebRTC audio only)
     socket.on("offer", d => socket.to(d.roomId).emit("offer", d.offer));
     socket.on("answer", d => socket.to(d.roomId).emit("answer", d.answer));
     socket.on("ice-candidate", d => socket.to(d.roomId).emit("ice-candidate", d.candidate));
 
     // MUTE SYNC
-    socket.on("mute-state", d => {
-        socket.to(d.roomId).emit("partner-mute-state", {
-            isMuted: d.isMuted
-        });
+    socket.on("mute-state",(data)=>{
+        socket.to(data.roomId).emit("partner-mute",data.isMuted);
     });
 
-    // NEXT USER + COOLDOWN
-    socket.on("next", () => {
+    // NEXT
+    socket.on("next",()=>{
 
-        socket.rooms.forEach(room => {
+        socket.rooms.forEach(room=>{
             if(room !== socket.id){
                 socket.leave(room);
-                socket.to(room).emit("partner-disconnected");
+                socket.to(room).emit("partner-left");
             }
         });
-
-        clearWaiting(socket);
-
-        // anti spam cooldown 2 sec
-        cooldown.set(socket.id, Date.now() + 2000);
 
         socket.emit("waiting");
     });
 
-    socket.on("disconnect", () => {
-        clearWaiting(socket);
+    // DISCONNECT
+    socket.on("disconnect",()=>{
+        waitingUsers = waitingUsers.filter(u => u.id !== socket.id);
     });
 
 });
 
 const PORT = process.env.PORT || 3000;
 
-server.listen(PORT, () => {
-    console.log("Velora v5 running on port", PORT);
+server.listen(PORT,()=>{
+    console.log("Velora v5 (NO VIDEO) running");
 });
