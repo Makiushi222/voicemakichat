@@ -10,21 +10,26 @@ const io = new Server(server, {
     transports: ["websocket", "polling"]
 });
 
-// IMPORTANT: must be /public
+// frontend folder
 app.use(express.static("public"));
 
 let waitingUser = null;
 
+function clearWaiting(socket){
+    if(waitingUser && waitingUser.id === socket.id){
+        waitingUser = null;
+    }
+}
+
 io.on("connection", (socket) => {
 
-    console.log("Connected:", socket.id);
+    console.log("User connected:", socket.id);
 
-    // MATCH USERS
+    // MATCH SYSTEM
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
 
-            // SAFE VERSION (NO TEMPLATE STRINGS BUG EVER)
             const roomId = "room-" + waitingUser.id + "-" + socket.id;
 
             socket.join(roomId);
@@ -49,22 +54,14 @@ io.on("connection", (socket) => {
     });
 
     // WEBRTC SIGNALING
-    socket.on("offer", (data) => {
-        socket.to(data.roomId).emit("offer", data.offer);
-    });
-
-    socket.on("answer", (data) => {
-        socket.to(data.roomId).emit("answer", data.answer);
-    });
-
-    socket.on("ice-candidate", (data) => {
-        socket.to(data.roomId).emit("ice-candidate", data.candidate);
-    });
+    socket.on("offer", d => socket.to(d.roomId).emit("offer", d.offer));
+    socket.on("answer", d => socket.to(d.roomId).emit("answer", d.answer));
+    socket.on("ice-candidate", d => socket.to(d.roomId).emit("ice-candidate", d.candidate));
 
     // MUTE SYNC
-    socket.on("mute-state", (data) => {
-        socket.to(data.roomId).emit("partner-mute-state", {
-            isMuted: data.isMuted
+    socket.on("mute-state", d => {
+        socket.to(d.roomId).emit("partner-mute-state", {
+            isMuted: d.isMuted
         });
     });
 
@@ -78,18 +75,14 @@ io.on("connection", (socket) => {
             }
         });
 
-        if (waitingUser && waitingUser.id === socket.id) {
-            waitingUser = null;
-        }
+        clearWaiting(socket);
 
         socket.emit("waiting");
     });
 
-    // CLEANUP
     socket.on("disconnect", () => {
-        if (waitingUser && waitingUser.id === socket.id) {
-            waitingUser = null;
-        }
+        clearWaiting(socket);
+        console.log("Disconnected:", socket.id);
     });
 
 });
@@ -97,5 +90,5 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log("Velora running on port", PORT);
+    console.log("Velora v3 running on port", PORT);
 });
