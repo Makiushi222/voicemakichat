@@ -6,32 +6,26 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: {
-        origin: "*"
-    }
+    cors: { origin: "*" },
+    transports: ["websocket", "polling"]
 });
 
-// IMPORTANT: your frontend must be inside /public
+// IMPORTANT: must be /public
 app.use(express.static("public"));
 
 let waitingUser = null;
-
-function clearWaiting(socket) {
-    if (waitingUser && waitingUser.id === socket.id) {
-        waitingUser = null;
-    }
-}
 
 io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    // 🎯 MATCH USERS
+    // MATCH USERS
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
 
-            const roomId = room-${waitingUser.id}-${socket.id};
+            // SAFE VERSION (NO TEMPLATE STRINGS BUG EVER)
+            const roomId = "room-" + waitingUser.id + "-" + socket.id;
 
             socket.join(roomId);
             waitingUser.join(roomId);
@@ -54,7 +48,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // 🎧 WebRTC SIGNALING
+    // WEBRTC SIGNALING
     socket.on("offer", (data) => {
         socket.to(data.roomId).emit("offer", data.offer);
     });
@@ -67,14 +61,14 @@ io.on("connection", (socket) => {
         socket.to(data.roomId).emit("ice-candidate", data.candidate);
     });
 
-    // 🔇 MUTE SYNC
+    // MUTE SYNC
     socket.on("mute-state", (data) => {
         socket.to(data.roomId).emit("partner-mute-state", {
             isMuted: data.isMuted
         });
     });
 
-    // ⏭️ NEXT USER
+    // NEXT USER
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
@@ -84,15 +78,18 @@ io.on("connection", (socket) => {
             }
         });
 
-        clearWaiting(socket);
+        if (waitingUser && waitingUser.id === socket.id) {
+            waitingUser = null;
+        }
 
         socket.emit("waiting");
     });
 
-    // ❌ CLEANUP ON DISCONNECT
+    // CLEANUP
     socket.on("disconnect", () => {
-        clearWaiting(socket);
-        console.log("Disconnected:", socket.id);
+        if (waitingUser && waitingUser.id === socket.id) {
+            waitingUser = null;
+        }
     });
 
 });
