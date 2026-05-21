@@ -6,16 +6,18 @@ const app = express();
 const server = http.createServer(app);
 
 const io = new Server(server, {
-    cors: { origin: "*" }
+    cors: {
+        origin: "*"
+    }
 });
 
+// IMPORTANT: your frontend must be inside /public
 app.use(express.static("public"));
 
 let waitingUser = null;
 
-// 🧠 clean waiting user
-function clearWaiting(socket){
-    if(waitingUser && waitingUser.id === socket.id){
+function clearWaiting(socket) {
+    if (waitingUser && waitingUser.id === socket.id) {
         waitingUser = null;
     }
 }
@@ -24,7 +26,7 @@ io.on("connection", (socket) => {
 
     console.log("Connected:", socket.id);
 
-    // 🎯 MATCH
+    // 🎯 MATCH USERS
     socket.on("findMatch", () => {
 
         if (waitingUser && waitingUser.id !== socket.id) {
@@ -52,7 +54,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // 🎧 WEBRTC SIGNALING
+    // 🎧 WebRTC SIGNALING
     socket.on("offer", (data) => {
         socket.to(data.roomId).emit("offer", data.offer);
     });
@@ -72,7 +74,7 @@ io.on("connection", (socket) => {
         });
     });
 
-    // ⏭ NEXT USER
+    // ⏭️ NEXT USER
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
@@ -87,7 +89,7 @@ io.on("connection", (socket) => {
         socket.emit("waiting");
     });
 
-    // ❌ DISCONNECT CLEANUP
+    // ❌ CLEANUP ON DISCONNECT
     socket.on("disconnect", () => {
         clearWaiting(socket);
         console.log("Disconnected:", socket.id);
