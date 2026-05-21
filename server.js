@@ -13,12 +13,16 @@ const io = new Server(server, {
 app.use(express.static("public"));
 
 let waitingUser = null;
+const cooldown = new Map(); // anti spam match
 
-// helper
 function clearWaiting(socket){
     if(waitingUser && waitingUser.id === socket.id){
         waitingUser = null;
     }
+}
+
+function inCooldown(id){
+    return cooldown.get(id) && Date.now() < cooldown.get(id);
 }
 
 io.on("connection", (socket) => {
@@ -29,8 +33,13 @@ io.on("connection", (socket) => {
         socket.username = name || "User";
     });
 
-    // MATCH SYSTEM
+    // MATCH SYSTEM (ANTI SPAM)
     socket.on("findMatch", () => {
+
+        if(inCooldown(socket.id)){
+            socket.emit("cooldown");
+            return;
+        }
 
         if(waitingUser && waitingUser.id !== socket.id){
 
@@ -59,7 +68,7 @@ io.on("connection", (socket) => {
         }
     });
 
-    // SIGNALING
+    // WEBRTC AUDIO ONLY
     socket.on("offer", d => socket.to(d.roomId).emit("offer", d.offer));
     socket.on("answer", d => socket.to(d.roomId).emit("answer", d.answer));
     socket.on("ice-candidate", d => socket.to(d.roomId).emit("ice-candidate", d.candidate));
@@ -71,7 +80,7 @@ io.on("connection", (socket) => {
         });
     });
 
-    // NEXT USER
+    // NEXT USER + COOLDOWN
     socket.on("next", () => {
 
         socket.rooms.forEach(room => {
@@ -82,6 +91,10 @@ io.on("connection", (socket) => {
         });
 
         clearWaiting(socket);
+
+        // anti spam cooldown 2 sec
+        cooldown.set(socket.id, Date.now() + 2000);
+
         socket.emit("waiting");
     });
 
@@ -94,5 +107,5 @@ io.on("connection", (socket) => {
 const PORT = process.env.PORT || 3000;
 
 server.listen(PORT, () => {
-    console.log("Velora v4 running on port", PORT);
+    console.log("Velora v5 running on port", PORT);
 });
