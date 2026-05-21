@@ -4,7 +4,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Velora v3</title>
+<title>Velora v4</title>
 
 <style>
 
@@ -20,12 +20,11 @@ body{
 }
 
 .container{
-    width:370px;
+    width:380px;
     background:#1e293b;
-    padding:30px;
+    padding:25px;
     border-radius:20px;
     text-align:center;
-    box-shadow:0 0 40px rgba(0,0,0,0.6);
 }
 
 .logo{
@@ -36,24 +35,18 @@ body{
     transition:0.3s;
 }
 
-/* speaking */
-.logo.speaking{
-    box-shadow:0 0 20px #22c55e, 0 0 40px #22c55e;
-}
+.speaking{box-shadow:0 0 20px #22c55e;}
+.mutedSelf{box-shadow:0 0 20px #a855f7;}
+.mutedPartner{box-shadow:0 0 20px #ef4444;}
 
-/* self muted */
-.logo.selfMuted{
-    box-shadow:0 0 20px #a855f7, 0 0 40px #a855f7;
-}
+#status{color:#94a3b8;margin:10px 0;}
 
-/* partner muted */
-.logo.partnerMuted{
-    box-shadow:0 0 20px #ef4444, 0 0 40px #ef4444;
-}
-
-#status{
-    color:#94a3b8;
-    margin:15px 0;
+input{
+    width:90%;
+    padding:10px;
+    border-radius:10px;
+    border:none;
+    margin-bottom:10px;
 }
 
 button{
@@ -68,13 +61,9 @@ button{
 .next{background:#ef4444;color:white;}
 .mute{background:#3b82f6;color:white;}
 
-.toast{
+#partner{
     margin-top:10px;
-    background:rgba(239,68,68,0.15);
-    border:1px solid #ef4444;
-    padding:10px;
-    border-radius:10px;
-    display:none;
+    color:#cbd5e1;
 }
 
 audio{display:none;}
@@ -88,15 +77,19 @@ audio{display:none;}
 
 <img src="/velora.jpg" class="logo" id="logo">
 
-<h1>Velora v3</h1>
+<h2>Velora v4</h2>
+
+<input id="nameInput" placeholder="Enter your name">
+
+<button onclick="setName()">Set Name</button>
 
 <p id="status">Idle</p>
+
+<p id="partner">No partner</p>
 
 <button class="start" onclick="startChat()">Start</button>
 <button class="next" onclick="nextUser()">Next</button>
 <button class="mute" onclick="toggleMute()">Mute</button>
-
-<div class="toast" id="toast">User disconnected</div>
 
 </div>
 
@@ -115,17 +108,22 @@ let partnerMuted = false;
 
 const logo = document.getElementById("logo");
 const statusText = document.getElementById("status");
-const toast = document.getElementById("toast");
+const partnerText = document.getElementById("partner");
+
+function setName(){
+    const name = document.getElementById("nameInput").value;
+    socket.emit("setName", name);
+}
 
 function updateUI(){
 
-    logo.classList.remove("speaking","selfMuted","partnerMuted");
+    logo.classList.remove("speaking","mutedSelf","mutedPartner");
 
     if(isMuted){
-        logo.classList.add("selfMuted");
+        logo.classList.add("mutedSelf");
     }
     else if(partnerMuted){
-        logo.classList.add("partnerMuted");
+        logo.classList.add("mutedPartner");
     }
     else{
         logo.classList.add("speaking");
@@ -134,7 +132,7 @@ function updateUI(){
 
 async function startChat(){
 
-    localStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    localStream = await navigator.mediaDevices.getUserMedia({audio:true});
 
     socket.emit("findMatch");
 
@@ -149,6 +147,7 @@ function nextUser(){
     socket.emit("findMatch");
 
     statusText.innerText = "Searching...";
+    partnerText.innerText = "No partner";
 }
 
 function toggleMute(){
@@ -175,7 +174,6 @@ function createPeer(){
     });
 
     peer.ontrack = (e)=>{
-
         const audio = document.createElement("audio");
         audio.srcObject = e.streams[0];
         audio.autoplay = true;
@@ -192,6 +190,8 @@ function createPeer(){
 socket.on("matched", async(data)=>{
 
     roomId = data.roomId;
+
+    partnerText.innerText = "Partner: " + data.partnerName;
 
     isMuted = false;
     partnerMuted = false;
@@ -211,26 +211,23 @@ socket.on("matched", async(data)=>{
     }
 });
 
-socket.on("offer", async(offer)=>{
-
+socket.on("offer", async(o)=>{
     if(!peer) createPeer();
 
-    await peer.setRemoteDescription(offer);
+    await peer.setRemoteDescription(o);
 
-    const answer = await peer.createAnswer();
-    await peer.setLocalDescription(answer);
+    const ans = await peer.createAnswer();
+    await peer.setLocalDescription(ans);
 
-    socket.emit("answer",{answer,roomId});
+    socket.emit("answer",{answer:ans,roomId});
 });
 
-socket.on("answer", async(answer)=>{
-    await peer.setRemoteDescription(answer);
+socket.on("answer", async(a)=>{
+    await peer.setRemoteDescription(a);
 });
 
 socket.on("ice-candidate", async(c)=>{
-    try{
-        await peer.addIceCandidate(c);
-    }catch(e){}
+    try{ await peer.addIceCandidate(c); }catch(e){}
 });
 
 socket.on("partner-mute-state",(d)=>{
@@ -239,19 +236,12 @@ socket.on("partner-mute-state",(d)=>{
 });
 
 socket.on("partner-disconnected",()=>{
-    toast.style.display="block";
-
-    setTimeout(()=>{
-        toast.style.display="none";
-    },3000);
-
+    partnerText.innerText = "Partner disconnected";
     if(peer) peer.close();
-
-    statusText.innerText="Disconnected";
 });
 
 socket.on("waiting",()=>{
-    statusText.innerText="Waiting...";
+    statusText.innerText = "Waiting...";
 });
 
 </script>
